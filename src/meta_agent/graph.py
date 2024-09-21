@@ -1,5 +1,5 @@
 import json, os, operator
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Literal
 from typing_extensions import TypedDict
 
 from langchain.llms import OpenAI
@@ -7,48 +7,88 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
-from llama_index import download_loader
+from langchain_core.documents import Document
 from langgraph.graph import END, StateGraph
 from langgraph.constants import Send
 
 from .data_types import MetaAnalysisInfo, PaperMetaInfo, SampleInfo, VariableInfo, VariablePairInfo
-from utils.helpers import get_llamaparsed_doc
-from utils.models import GPT4O_LANGCHAIN_NEW
-
+from src.utils.helpers import get_llamaparsed_doc
+from src.utils.models import GPT4O_LANGCHAIN_NEW
+from .chains import (
+    get_is_paper_relevant_chain, 
+    get_extract_paper_meta_info_chain, 
+)
 
 class GraphState(TypedDict):
-    paper_path: str
-    paper_content: str
-    paper_meta_info: Optional[PaperMetaInfo]
-    sample_info: Optional[List[SampleInfo]]
-    variable_info: Optional[List[VariableInfo]]
-    variable_pair_info: Optional[List[VariablePairInfo]]
-    meta_info: Optional[MetaAnalysisInfo]
-    independent_variable: str
-    dependent_variable: str
-    worklog: str
+    paper_path: str  # Path to the paper file
+    independent_variable: str  # The independent variables being studied
+    dependent_variable: str  # The dependent variable being studied
+    paper_content: Optional[List[Document]]  # Content of the paper
+    paper_relevance: Optional[bool]  # Boolean indicating if the paper is relevant to the meta-analysis
+    paper_meta_info: Optional[PaperMetaInfo]  # Metadata information about the paper
+    sample_info: Optional[List[SampleInfo]]  # Information about the sample used in the study
+    variable_info: Optional[List[VariableInfo]]  # Information about the variables studied
+    variable_pair_info: Optional[List[VariablePairInfo]]  # Information about pairs of variables and their relationships
+    meta_info: Optional[MetaAnalysisInfo]  # Overall meta-analysis information
+    worklog: str  # Log of work done by this LangGraph 
 
 class MetaAnalysisGraph:
     def __init__(self):
         self.llm = OpenAI(temperature=0)
 
     def load_and_parse_pdf(self, state: GraphState) -> GraphState:
-        document = get_llamaparsed_doc(state["paper_path"])
-        return {"paper_content": document}
+        # Add worklog entry for loading and parsing PDF
+        worklog_entry = f"Loaded and parsed PDF from {state['paper_path']}"
+        state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
+        print("Worklog:", state["worklog"])
+        documents = get_llamaparsed_doc(state["paper_path"])
+        print(documents[0].page_content)  # Print the first 100 characters of the document
+        return {
+            "paper_content": documents, 
+            "worklog": state["worklog"]
+        }
+
+    def judge_paper_relevance(self, state: GraphState) -> GraphState:
+        # Add worklog entry for judging paper relevance
+        worklog_entry = f"Judging paper relevance for {state['paper_path']}"
+        state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
+        print("Worklog:", state["worklog"])
+
+        dependent_variable = state["dependent_variable"]
+        independent_variable = state["independent_variable"]
+        paper_content = state["paper_content"][:5]
+
+        chain = get_is_paper_relevant_chain()
+        paper_relevance = chain.invoke(
+            {
+                "dependent_variable": dependent_variable, 
+                "independent_variable": independent_variable, 
+                "paper_content": paper_content
+            }
+        )
+        print("Paper Relevance:", paper_relevance.is_relevant)
+        return {"paper_relevance": paper_relevance.is_relevant, "worklog": state["worklog"]} 
+
+    def route_based_on_relevance(self, state: GraphState) -> Literal["end", "relevant"]:
+        # Add worklog entry for routing based on relevance
+        worklog_entry = f"Routing based on relevance for {state['paper_path']}"
+        state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
+        print("Worklog:", state["worklog"])
+
+        if state.get("paper_relevance"):
+            return "relevant"
+        else:
+            return "end"
 
     def extract_paper_meta_info(self, state: GraphState) -> GraphState:
-        output_parser = PydanticOutputParser(pydantic_object=PaperMetaInfo)
-        
-        prompt = PromptTemplate(
-            template="Extract meta-analysis information from the following text:\n\n{text}\n\n{format_instructions}",
-            input_variables=["text"],
-            partial_variables={"format_instructions": output_parser.get_format_instructions()}
+        chain = get_extract_paper_meta_info_chain()
+        output = chain.invoke(
+            {
+                "paper_content": state["paper_content"][:10]
+            }
         )
-
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        output = chain.run(text=state["paper_content"])
-        paper_meta_info = output_parser.parse(output)
-        
+        paper_meta_info = PaperMetaInfo.parse_obj(output)
+        print("Paper Meta Info:", paper_meta_info)
         return {"paper_meta_info": paper_meta_info}
 
     def extract_sample_info(self, state: GraphState) -> GraphState:
@@ -119,29 +159,34 @@ class MetaAnalysisGraph:
         workflow = StateGraph(GraphState)
         
         workflow.add_node("load_and_parse_pdf", self.load_and_parse_pdf)
+        workflow.add_node("judge_paper_relevance", self.judge_paper_relevance)
         workflow.add_node("extract_paper_meta_info", self.extract_paper_meta_info)
-        workflow.add_node("extract_sample_info", self.extract_sample_info)
-        workflow.add_node("extract_variable_info", self.extract_variable_info)
-        workflow.add_node("extract_variable_pair_info", self.extract_variable_pair_info)
-        workflow.add_node("synthesize_meta_info", self.synthesize_meta_info)
 
         workflow.set_entry_point("load_and_parse_pdf")
-
-        workflow.add_edge("load_and_parse_pdf", "extract_paper_meta_info")
-        workflow.add_edge("extract_paper_meta_info", "extract_sample_info")
-        workflow.add_edge("extract_sample_info", "extract_variable_info")
-        workflow.add_edge("extract_variable_info", "extract_variable_pair_info")
-        workflow.add_edge("extract_variable_pair_info", "synthesize_meta_info")
-        workflow.add_edge("synthesize_meta_info", END)
+        # workflow.add_edge("load_and_parse_pdf", "extract_paper_meta_info")
+        # workflow.add_edge("extract_paper_meta_info", "extract_sample_info")
+        # workflow.add_edge("extract_sample_info", "extract_variable_info")
+        # workflow.add_edge("extract_variable_info", "extract_variable_pair_info")
+        # workflow.add_edge("extract_variable_pair_info", "synthesize_meta_info")
+        workflow.add_edge("load_and_parse_pdf", "judge_paper_relevance")
+        workflow.add_conditional_edges(
+            "judge_paper_relevance", 
+            self.route_based_on_relevance,
+            {
+                "relevant": "extract_paper_meta_info", 
+                "end": END
+            }
+        )
+        workflow.add_edge("extract_paper_meta_info", END)
 
         graph = workflow.compile()
         print(graph.get_graph().draw_ascii())
         return graph
 
 if __name__ == "__main__":
-    pdf_path = "/path/to/your/pdf/file.pdf"
-    independent_variable = "your_independent_variable"
-    dependent_variable = "your_dependent_variable"
+    pdf_path = "data/test/test_meta_paper.pdf"
+    independent_variable = "stereotype lift"
+    dependent_variable = "cognitive test performance"
     
     meta_analysis = MetaAnalysisGraph()
     graph = meta_analysis.create_meta_analysis_graph()
@@ -151,7 +196,3 @@ if __name__ == "__main__":
         "dependent_variable": dependent_variable
     })
     
-    print("Meta-Analysis Results:")
-    print(json.dumps(output["meta_info"], indent=2))
-    print("\nWorklog:")
-    print(output["worklog"])

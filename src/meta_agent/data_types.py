@@ -6,10 +6,10 @@ class PaperMetaInfo(BaseModel):
     title: str = Field(description="The title of the paper")
     publication_year: int = Field(description="The year the paper was published")
     journal: str = Field(description="The name of the journal")
-    published_status: int = Field(description="1 if published, 0 if unpublished")
-    publication_type: int = Field(description="1 for journal articles, 2 for dissertation papers, 3 for conference papers")
-    num_studies: int = Field(description="The number of studies in the paper")
-    num_samples: int = Field(description="The number of samples in the paper")
+    published_status: Literal["published", "unpublished"]    = Field(description="The publication status of the paper")
+    publication_type: Literal["journal article", "dissertation paper", "conference paper"] = Field(description="The type of publication of the paper")
+    num_studies: int = Field(description="The number of different studies conducted in the paper")
+    num_samples: int = Field(description="The number of different samples used in the paper")
 
 class SampleInfo(BaseModel):
     sample_name: str = Field(description="The alias or short name of the sample")
