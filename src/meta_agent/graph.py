@@ -1,5 +1,5 @@
 import json, os, operator
-from typing import Annotated, List, Optional, Literal
+from typing import Annotated, List, Optional, Literal, Dict
 from typing_extensions import TypedDict
 
 from langchain.llms import OpenAI
@@ -11,26 +11,31 @@ from langchain_core.documents import Document
 from langgraph.graph import END, StateGraph
 from langgraph.constants import Send
 
-from .data_types import MetaAnalysisInfo, PaperMetaInfo, SampleInfo, VariableInfo, VariablePairInfo
+from .data_types import ( 
+    PaperMetaInfo, 
+    SampleBasicInfo,
+    SampleCompleteInfo
+)
+
 from src.utils.helpers import get_llamaparsed_doc
 from src.utils.models import GPT4O_LANGCHAIN_NEW
 from .chains import (
     get_is_paper_relevant_chain, 
     get_extract_paper_meta_info_chain, 
+    get_extract_samples_basic_info_chain,
+    get_extract_variables_info_from_sample_chain
 )
 
 class GraphState(TypedDict):
     paper_path: str  # Path to the paper file
-    independent_variable: str  # The independent variables being studied
     dependent_variable: str  # The dependent variable being studied
-    paper_content: Optional[List[Document]]  # Content of the paper
-    paper_relevance: Optional[bool]  # Boolean indicating if the paper is relevant to the meta-analysis
-    paper_meta_info: Optional[PaperMetaInfo]  # Metadata information about the paper
-    sample_info: Optional[List[SampleInfo]]  # Information about the sample used in the study
-    variable_info: Optional[List[VariableInfo]]  # Information about the variables studied
-    variable_pair_info: Optional[List[VariablePairInfo]]  # Information about pairs of variables and their relationships
-    meta_info: Optional[MetaAnalysisInfo]  # Overall meta-analysis information
-    worklog: str  # Log of work done by this LangGraph 
+    independent_variables: List[str]  # The independent variables being studied
+    paper_content: Annotated[Optional[List[Document]], operator.add] = None  # Content of the paper
+    paper_relevance: Annotated[Optional[bool], operator.add] = None  # Boolean indicating if the paper is relevant to the meta-analysis
+    paper_meta_info: Annotated[Optional[PaperMetaInfo], operator.add] = None  # Metadata information about the paper
+    samples_basic_info: Annotated[Optional[List[SampleBasicInfo]], operator.add] = None  # Basic information about the samples in the paper
+    samples_complete_info: Annotated[Optional[List[SampleCompleteInfo]], operator.add] = None  # Complete information about the samples in the paper
+    worklog: Annotated[str, operator.add] = ""  # Log of work done by this LangGraph 
 
 class MetaAnalysisGraph:
     def __init__(self):
@@ -55,14 +60,14 @@ class MetaAnalysisGraph:
         print("Worklog:", state["worklog"])
 
         dependent_variable = state["dependent_variable"]
-        independent_variable = state["independent_variable"]
+        independent_variables = state["independent_variables"]
         paper_content = state["paper_content"][:5]
 
         chain = get_is_paper_relevant_chain()
         paper_relevance = chain.invoke(
             {
                 "dependent_variable": dependent_variable, 
-                "independent_variable": independent_variable, 
+                "independent_variables": independent_variables, 
                 "paper_content": paper_content
             }
         )
@@ -91,67 +96,101 @@ class MetaAnalysisGraph:
         print("Paper Meta Info:", paper_meta_info)
         return {"paper_meta_info": paper_meta_info}
 
-    def extract_sample_info(self, state: GraphState) -> GraphState:
-        output_parser = PydanticOutputParser(pydantic_object=SampleInfo)
+    def extract_samples_info(self, state: GraphState) -> GraphState:
+        """
+            Extract basic sample information from the paper content.
+            For each sample, extract the sample name along with the basic information.
+        """
         
-        prompt = PromptTemplate(
-            template="Extract sample information from the following text:\n\n{text}\n\n{format_instructions}",
-            input_variables=["text"],
-            partial_variables={"format_instructions": output_parser.get_format_instructions()}
+        worklog_entry = f"Extracting samples info from paper content"
+        state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
+        print("Worklog:", state["worklog"])
+        # Extract sample information from the paper content
+        chain = get_extract_samples_basic_info_chain()
+        output = chain.invoke(
+            {
+                "paper_content": state["paper_content"]
+            }
+        )
+        samples_basic_info = output.sample_info
+        print("Samples Info:", samples_basic_info)
+        
+        return {
+            "samples_basic_info": samples_basic_info,
+            "worklog": state["worklog"]
+        }
+
+    # Here we define the logic to map out over the generated subjects
+    # We will use this an edge in the graph
+    def continue_to_extraction_by_sample(self, state: GraphState):
+        # We will return a list of `Send` objects
+        # Each `Send` object consists of the name of a node in the graph
+        # as well as the state to send to that node
+        return [
+            Send(
+                "extract_variable_info_in_sample", 
+                {
+                    "sample_basic_info": s, 
+                    "paper_content": state["paper_content"],
+                    "dependent_variable": state["dependent_variable"],
+                    "independent_variables": state["independent_variables"]
+                }
+            ) 
+            for s in state["samples_basic_info"]
+        ]
+
+
+    def extract_variable_info_in_sample(self, state: GraphState) -> GraphState:
+        """
+            Extract variable information in a sample.
+        """
+
+        worklog_entry = f"Extracting variable information in sample {state['sample_basic_info'].sample_name}"
+        state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
+        print("worklog:", state["worklog"])
+
+        sample_basic_info = state["sample_basic_info"]
+        sample_name = sample_basic_info.sample_name
+        sample_description = sample_basic_info.sample_description
+        sample_size = sample_basic_info.sample_size
+
+        sample_short_description = f"""
+            Sample Name: {sample_name}
+            Sample Description: {sample_description}
+            Sample Size: {sample_size}
+        """
+
+        chain = get_extract_variables_info_from_sample_chain()
+        output = chain.invoke(
+            {
+                "paper_content": state["paper_content"],
+                "sample_description": sample_short_description,
+                "dependent_variable": state["dependent_variable"],
+                "independent_variables": state["independent_variables"]
+            }
         )
 
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        output = chain.run(text=state["paper_content"])
-        sample_info = output_parser.parse(output)
-        
-        return {"sample_info": sample_info}
+        print("Variables Info:", output)
 
-    def extract_variable_info(self, state: GraphState) -> GraphState:
-        output_parser = PydanticOutputParser(pydantic_object=VariableInfo)
-        
-        prompt = PromptTemplate(
-            template="Extract variable information from the following text:\n\n{text}\n\n{format_instructions}",
-            input_variables=["text"],
-            partial_variables={"format_instructions": output_parser.get_format_instructions()}
+        sample_complete_info = SampleCompleteInfo(
+            sample_name=sample_name,
+            sample_basic_info=sample_basic_info,
+            dependent_variable_info=output.dependent_variable_info,
+            independent_variables_info=output.independent_variables_info,
+            correlations_with_dependent_variable=output.correlation_with_dependent_variable
         )
-        
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        output = chain.run(text=state["paper_content"])
-        variable_info = output_parser.parse(output)
-        
-        return {"variable_info": variable_info}
 
-    def extract_variable_pair_info(self, state: GraphState) -> GraphState:
-        output_parser = PydanticOutputParser(pydantic_object=VariablePairInfo)
-        
-        prompt = PromptTemplate(
-            template="Extract variable pair information from the following text:\n\n{text}\n\n{format_instructions}",
-            input_variables=["text"],
-            partial_variables={"format_instructions": output_parser.get_format_instructions()}
-        )   
+        print("Sample_complete_info: \n\n", sample_complete_info)
 
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        output = chain.run(text=state["paper_content"])
-        variable_pair_info = output_parser.parse(output)
-        
-        return {"variable_pair_info": variable_pair_info}   
+        return {
+            "samples_complete_info": [sample_complete_info], 
+            "worklog": state["worklog"]
+        }
 
     def synthesize_meta_info(self, state: GraphState) -> GraphState:
         current_worklog = "--- Synthesizing the Response ---"
 
-        # Ensemble MetaAnalysisInfo from extracted information
-        meta_analysis_info = MetaAnalysisInfo(
-            paper_meta_info=state["paper_meta_info"],
-            sample_info=state["sample_info"],
-            variable_pair_info=state["variable_pair_info"]
-        )
-
-        # Update the current worklog
-        current_worklog += "\nMeta-analysis information synthesized successfully."
-
-        # Return the assembled MetaAnalysisInfo and updated worklog
         return {
-            "meta_analysis_info": meta_analysis_info,
             "worklog": current_worklog
         }
 
@@ -161,7 +200,9 @@ class MetaAnalysisGraph:
         workflow.add_node("load_and_parse_pdf", self.load_and_parse_pdf)
         workflow.add_node("judge_paper_relevance", self.judge_paper_relevance)
         workflow.add_node("extract_paper_meta_info", self.extract_paper_meta_info)
-
+        workflow.add_node("extract_samples_info", self.extract_samples_info)
+        workflow.add_node("extract_variable_info_in_sample", self.extract_variable_info_in_sample)
+        workflow.add_node("synthesize_meta_info", self.synthesize_meta_info)
         workflow.set_entry_point("load_and_parse_pdf")
         # workflow.add_edge("load_and_parse_pdf", "extract_paper_meta_info")
         # workflow.add_edge("extract_paper_meta_info", "extract_sample_info")
@@ -177,22 +218,30 @@ class MetaAnalysisGraph:
                 "end": END
             }
         )
-        workflow.add_edge("extract_paper_meta_info", END)
+        
+        workflow.add_edge("extract_paper_meta_info", "extract_samples_info")
+        workflow.add_conditional_edges("extract_samples_info", self.continue_to_extraction_by_sample, ["extract_variable_info_in_sample"])
+
+        workflow.add_edge("extract_variable_info_in_sample", "synthesize_meta_info")
+        workflow.add_edge("synthesize_meta_info", END)
 
         graph = workflow.compile()
         print(graph.get_graph().draw_ascii())
         return graph
 
 if __name__ == "__main__":
-    pdf_path = "data/test/test_meta_paper.pdf"
-    independent_variable = "stereotype lift"
-    dependent_variable = "cognitive test performance"
+    pdf_path = "data/test/test_simple.pdf"
+    independent_variables = ["Narcissism", "Hostility"]
+    dependent_variable = "individual undermining"
+    
+    # pdf_path = "data/test/test_complicated.pdf"
+    # independent_variables = ["Narcissism"]
+    # dependent_variable = "verbal aggression"
     
     meta_analysis = MetaAnalysisGraph()
     graph = meta_analysis.create_meta_analysis_graph()
     output = graph.invoke({
         "paper_path": pdf_path,
-        "independent_variable": independent_variable,
+        "independent_variables": independent_variables,
         "dependent_variable": dependent_variable
-    })
-    
+    })    

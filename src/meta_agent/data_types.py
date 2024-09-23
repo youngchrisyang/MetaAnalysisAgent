@@ -1,22 +1,21 @@
-from pydantic import BaseModel, Field
-from typing import Annotated, List, Literal, Optional, Sequence, TypedDict, Union
+from langchain.pydantic_v1 import BaseModel,Field
+from typing import List, Literal, Optional, Dict
 
 class PaperMetaInfo(BaseModel):
     paper_id: str = Field(description="The ID of the paper")
     title: str = Field(description="The title of the paper")
     publication_year: int = Field(description="The year the paper was published")
     journal: str = Field(description="The name of the journal")
-    published_status: Literal["published", "unpublished"]    = Field(description="The publication status of the paper")
+    published_status: Literal["published", "unpublished"] = Field(description="The publication status of the paper")
     publication_type: Literal["journal article", "dissertation paper", "conference paper"] = Field(description="The type of publication of the paper")
-    num_studies: int = Field(description="The number of different studies conducted in the paper")
-    num_samples: int = Field(description="The number of different samples used in the paper")
 
-class SampleInfo(BaseModel):
+class SampleBasicInfo(BaseModel):
     sample_name: str = Field(description="The alias or short name of the sample")
+    sample_description: str = Field(description="A brief description of the sample")
     country: str = Field(description="The country where the sample was collected")
-    sampling_technique: Literal["National representative sample", "Urban/City sample", "Rural/Village sample"] = Field(description="The sampling technique used")
+    sampling_technique: Literal["National representative sample", "Urban/City sample", "Rural/Village sample", "Other"] = Field(description="The sampling technique used")
     sample_type: str = Field(description="Brief notes about the source of the sample (e.g., 'clinic' for clinical samples)")
-    sample_size: int = Field(description="The number of participants in the sample")
+    sample_size: int = Field(description="The number of participants in the sample. Sample data size N")
     mean_age: Optional[float] = Field(description="The average age of participants")
     sd_age: Optional[float] = Field(description="The standard deviation of the ages")
     male_n: Optional[int] = Field(description="The number of male participants")
@@ -25,7 +24,7 @@ class SampleInfo(BaseModel):
     major_ethnicity_percentage: Optional[float] = Field(description="The percentage of the major ethnicity")
     response_rate: Optional[float] = Field(description="The percentage of participants who responded to the study")
 
-class VariableInfo(BaseModel):
+class VariableInfoInSample(BaseModel):
     variable_name: str = Field(description="The name of the variable")
     variable_type: Literal["Continuous", "Categorical"] = Field(description="The type of the variable")
     scale_measure: str = Field(description="The scale or measure used for the variable")
@@ -33,12 +32,24 @@ class VariableInfo(BaseModel):
     mean: Optional[float] = Field(description="The mean value of the variable")
     standard_deviation: Optional[float] = Field(description="The standard deviation of the variable")
 
-class VariablePairInfo(BaseModel):
-    variable_x: VariableInfo = Field(description="The first variable in the pair")
-    variable_y: VariableInfo = Field(description="The second variable in the pair")
-    correlation_coefficient: float = Field(description="The correlation coefficient between Variable X and Variable Y")
+class CorrelationInfoInSample(BaseModel):
+    exists: bool = Field(description="Whether the correlation exists for an independent variable and the dependent variable")
+    correlation_coefficient: Optional[float] = Field(description="The correlation coefficient between an independent variable and the dependent variable")
 
-class MetaAnalysisInfo(BaseModel):
+class SampleCompleteInfo(BaseModel):
+    sample_name: str = Field(description="The name of the sample")
+    sample_basic_info: SampleBasicInfo = Field(description="The basic information of the sample")
+    dependent_variable_info: VariableInfoInSample = Field(description="The information of the dependent variable")
+    independent_variables_info: List[VariableInfoInSample] = Field(description="The information of the independent variables")
+    correlations_with_dependent_variable: List[CorrelationInfoInSample] = Field(description="The correlations between the independent variables and the dependent variable")
+
+
+class YXPairInfo(BaseModel):
+    y_variable: str = Field(description="The name of the Y variable")
+    x_variable: str = Field(description="The name of the X variable")
+    samples: List[str] = Field(description="List of sample names where this Y-X pair exists")
+
+class FinalMetaAnalysisInfo(BaseModel):
     paper_meta_info: PaperMetaInfo = Field(description="The meta information of the paper")
-    sample_info: List[SampleInfo] = Field(description="The sample information of the paper")
-    variable_pair_info: List[VariablePairInfo] = Field(description="The variable pair information of the paper")
+    sample_info: List[SampleCompleteInfo] = Field(description="List of all samples in the paper")
+    yx_pairs: Dict[str, YXPairInfo] = Field(description="Dictionary of Y-X pair information, where key is 'Y_X'")
