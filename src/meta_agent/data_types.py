@@ -43,13 +43,6 @@ class SampleCompleteInfo(BaseModel):
     variables_info: List[VariableInfoInSample] = Field(description="The information of the variables")
     correlations_info: List[CorrelationInfoInSample] = Field(description="The correlations between any pairs of variables")
 
-
-class YXPairInfo(BaseModel):
-    y_variable: str = Field(description="The name of the Y variable")
-    x_variable: str = Field(description="The name of the X variable")
-    samples: List[str] = Field(description="List of sample names where this Y-X pair exists")
-
 class FinalMetaAnalysisInfo(BaseModel):
     paper_meta_info: PaperMetaInfo = Field(description="The meta information of the paper")
     sample_info: List[SampleCompleteInfo] = Field(description="List of all samples in the paper")
-    yx_pairs: Dict[str, YXPairInfo] = Field(description="Dictionary of Y-X pair information, where key is 'Y_X'")

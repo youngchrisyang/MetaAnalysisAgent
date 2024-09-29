@@ -253,5 +253,3 @@ if __name__ == "__main__":
     print("--- Samples Complete Info ---")
     for sample in output["samples_complete_info"]:
         pretty_print_sample_info(sample)
-
-    
