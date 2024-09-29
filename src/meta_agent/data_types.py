@@ -33,15 +33,15 @@ class VariableInfoInSample(BaseModel):
     standard_deviation: Optional[float] = Field(description="The standard deviation of the variable")
 
 class CorrelationInfoInSample(BaseModel):
+    variable_pair: tuple = Field(description="The pair of variables, represented as a tuple of two strings, sorted alphabetically")
     exists: bool = Field(description="Whether the correlation exists for an independent variable and the dependent variable")
-    correlation_coefficient: Optional[float] = Field(description="The correlation coefficient between an independent variable and the dependent variable")
+    correlation_coefficient: Optional[float] = Field(description="The correlation coefficient between a pair of variables")
 
 class SampleCompleteInfo(BaseModel):
     sample_name: str = Field(description="The name of the sample")
     sample_basic_info: SampleBasicInfo = Field(description="The basic information of the sample")
-    dependent_variable_info: VariableInfoInSample = Field(description="The information of the dependent variable")
-    independent_variables_info: List[VariableInfoInSample] = Field(description="The information of the independent variables")
-    correlations_with_dependent_variable: List[CorrelationInfoInSample] = Field(description="The correlations between the independent variables and the dependent variable")
+    variables_info: List[VariableInfoInSample] = Field(description="The information of the variables")
+    correlations_info: List[CorrelationInfoInSample] = Field(description="The correlations between any pairs of variables")
 
 
 class YXPairInfo(BaseModel):

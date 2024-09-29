@@ -17,7 +17,7 @@ from .data_types import (
     SampleCompleteInfo
 )
 
-from src.utils.helpers import get_llamaparsed_doc
+from src.utils.helpers import get_llamaparsed_doc, pretty_print_sample_info
 from src.utils.models import GPT4O_LANGCHAIN_NEW
 from .chains import (
     get_is_paper_relevant_chain, 
@@ -61,7 +61,7 @@ class MetaAnalysisGraph:
 
         dependent_variable = state["dependent_variable"]
         independent_variables = state["independent_variables"]
-        paper_content = state["paper_content"][:5]
+        paper_content = state["paper_content"]
 
         chain = get_is_paper_relevant_chain()
         paper_relevance = chain.invoke(
@@ -160,13 +160,13 @@ class MetaAnalysisGraph:
             Sample Size: {sample_size}
         """
 
+        variables = [state["dependent_variable"]] + state["independent_variables"]
         chain = get_extract_variables_info_from_sample_chain()
         output = chain.invoke(
             {
                 "paper_content": state["paper_content"],
                 "sample_description": sample_short_description,
-                "dependent_variable": state["dependent_variable"],
-                "independent_variables": state["independent_variables"]
+                "variables": variables
             }
         )
 
@@ -175,9 +175,8 @@ class MetaAnalysisGraph:
         sample_complete_info = SampleCompleteInfo(
             sample_name=sample_name,
             sample_basic_info=sample_basic_info,
-            dependent_variable_info=output.dependent_variable_info,
-            independent_variables_info=output.independent_variables_info,
-            correlations_with_dependent_variable=output.correlation_with_dependent_variable
+            variables_info=output.variables_info,
+            correlations_info=output.correlations_info
         )
 
         print("Sample_complete_info: \n\n", sample_complete_info)
@@ -230,13 +229,13 @@ class MetaAnalysisGraph:
         return graph
 
 if __name__ == "__main__":
-    pdf_path = "data/test/test_simple.pdf"
-    independent_variables = ["Narcissism", "Hostility"]
-    dependent_variable = "individual undermining"
+    # pdf_path = "data/test/test_simple.pdf"
+    # independent_variables = ["Narcissism", "Hostility"]
+    # dependent_variable = "Verbal Aggression"
     
-    # pdf_path = "data/test/test_complicated.pdf"
-    # independent_variables = ["Narcissism"]
-    # dependent_variable = "verbal aggression"
+    pdf_path = "data/test/test_complicated.pdf"
+    independent_variables = ["neuroticism", "narcissism"]
+    dependent_variable = "individual undermining"
     
     meta_analysis = MetaAnalysisGraph()
     graph = meta_analysis.create_meta_analysis_graph()
@@ -245,3 +244,14 @@ if __name__ == "__main__":
         "independent_variables": independent_variables,
         "dependent_variable": dependent_variable
     })    
+
+    print("--- PRINTING AGENT OUTPUT ---\n\n\n\n")
+
+    print("--- Paper Meta Info ---")
+    print(output["paper_meta_info"])
+
+    print("--- Samples Complete Info ---")
+    for sample in output["samples_complete_info"]:
+        pretty_print_sample_info(sample)
+
+    

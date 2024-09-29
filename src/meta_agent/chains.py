@@ -25,10 +25,14 @@ PAPER_RELEVANCE_PROMPT = PromptTemplate.from_template(
     You are a intelligent academic researcher. You are given the first a few pages of a paper, which includes a title, abstract, and a few pages of content.
     Your task is to determine if the paper is relevant to a research topic.
 
-    The research topic is to study the relationship between {independent_variables} and {dependent_variable}.
+    The research topic is to study the relationship between {independent_variables} and {dependent_variable}. 
 
     Please respond with "True" if the paper is relevant to the research topic, and "False" if it is not.
     Be generous in determining if a paper is relevant.
+
+    Instructions:
+    1. As long as the paper has both of the variables in the data, the paper is relevant.
+    2. It's possible both variables appeared as the independent variables in the paper provided.
 
     Paper Content:
     {paper_content}
@@ -112,11 +116,8 @@ def get_extract_samples_basic_info_chain(llm = GPT4O_LANGCHAIN_NEW):
 
 
 class ExtractVariablesInfoFromSample(BaseModel):
-    dependent_variable: str = Field(description="The dependent variable")
-    independent_variables: List[str] = Field(description="The independent variables")
-    dependent_variable_info: VariableInfoInSample = Field(description="The information of the dependent variable")
-    independent_variables_info: List[VariableInfoInSample] = Field(description="The information of the independent variables")
-    correlation_with_dependent_variable: List[CorrelationInfoInSample] = Field(description="The correlation between the independent variables and the dependent variable")
+    variables_info: List[VariableInfoInSample] = Field(description="The desired information for each variable")
+    correlations_info: List[CorrelationInfoInSample] = Field(description="The correlations between any pairs of variables")
 
 EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = PromptTemplate.from_template(
     """
@@ -125,7 +126,7 @@ EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = PromptTemplate.from_template(
 
     Instructions:
     1. You will be given the sample description - please complete the task by only using content related to the sample.
-    2. For each variable (including both dependent and independent variables), extract the basic information about the variable.
+    2. For each of the given variables, extract the basic information about the variable related to the sample.
 
     For each variable, please extract the following information:
     - variable_name: The name of the variable.
@@ -135,14 +136,15 @@ EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = PromptTemplate.from_template(
     - mean: The mean value of the variable.
     - standard_deviation: The standard deviation of the variable.
 
-    3. For each independent variable, determine if there is a data on correlation between the dependent variable and independent variables. If so, extract the correlation information.
+    3. For each pair of variables, determine if there is information on correlation between them. If so, extract the correlation information.
+    - variable_pair: The pair of variables, represented as a tuple of two strings, sorted alphabetically. Remember to extract for any pairs.
+    - exists: Whether the correlation exists for a pair of variables.
+    - correlation_coefficient: The correlation coefficient between a pair of variables.
 
     Sample Description:
     {sample_description}
 
-    Dependent Variable: {dependent_variable}
-
-    Independent Variables: {independent_variables}
+    Variables: {variables}
 
     Paper Content:
     {paper_content}
