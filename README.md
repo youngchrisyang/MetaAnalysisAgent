@@ -52,7 +52,7 @@ The main script to run is `src/process.py`. Before running, you may want to modi
 - `dependent_variable`: The dependent variable for your meta-analysis
 - `independent_variables`: List of independent variables for your meta-analysis
 
-To run the script:
+To run the script, navigate to the root directory of the project (meta-analysis-agent) and execute the following command:
     ```
     python -m src.process
     ```
