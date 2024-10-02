@@ -54,7 +54,7 @@ The main script to run is `src/process.py`. Before running, you may want to modi
 
 To run the script:
     ```
-    python src/process.py
+    python -m src.process
     ```
 
 ## Output
