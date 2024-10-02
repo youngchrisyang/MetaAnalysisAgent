@@ -3,16 +3,19 @@ import csv
 from typing import List, Dict
 from src.meta_agent.graph import MetaAnalysisGraph
 from src.meta_agent.data_types import FinalMetaAnalysisInfo, SampleCompleteInfo, PaperMetaInfo, VariableInfoInSample, CorrelationInfoInSample
+from src.utils.initialization import initialize_env
+
+initialize_env()
 
 def process_papers(input_dir: str, output_dir: str, dependent_variable: str, independent_variables: List[str]):
     meta_analysis = MetaAnalysisGraph()
     graph = meta_analysis.create_meta_analysis_graph()
 
     # Prepare output CSV files
-    papers_file = open(os.path.join(output_dir, 'papers.csv'), 'w', newline='')
-    samples_file = open(os.path.join(output_dir, 'samples.csv'), 'w', newline='')
-    variables_file = open(os.path.join(output_dir, 'variables.csv'), 'w', newline='')
-    correlations_file = open(os.path.join(output_dir, 'correlations.csv'), 'w', newline='')
+    papers_file = open(os.path.join(output_dir, 'papers.csv'), 'w', newline='', encoding='utf-8')
+    samples_file = open(os.path.join(output_dir, 'samples.csv'), 'w', newline='', encoding='utf-8')
+    variables_file = open(os.path.join(output_dir, 'variables.csv'), 'w', newline='', encoding='utf-8')
+    correlations_file = open(os.path.join(output_dir, 'correlations.csv'), 'w', newline='', encoding='utf-8')
 
     papers_writer = csv.writer(papers_file)
     samples_writer = csv.writer(samples_file)
@@ -31,69 +34,77 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
             paper_path = os.path.join(input_dir, filename)
             paper_id = os.path.splitext(filename)[0]  # Use filename without extension as paper_id
 
-            # Invoke the graph
-            output = graph.invoke({
-                "paper_path": paper_path,
-                "independent_variables": independent_variables,
-                "dependent_variable": dependent_variable
-            })
+            try:
+                # Invoke the graph
+                output = graph.invoke({
+                    "paper_path": paper_path,
+                    "independent_variables": independent_variables,
+                    "dependent_variable": dependent_variable
+                })
 
-            # Extract relevant information
-            paper_meta_info: PaperMetaInfo = output.get("paper_meta_info")
-            samples_complete_info: List[SampleCompleteInfo] = output.get("samples_complete_info", [])
+                print(f"output from invoking graph: {output}")
 
-            # Write paper information
-            papers_writer.writerow([
-                paper_id,
-                paper_meta_info.title,
-                paper_meta_info.publication_year,
-                paper_meta_info.journal,
-                paper_meta_info.published_status,
-                paper_meta_info.publication_type,
-                output.get("paper_relevance", False)
-            ])
+                # Extract relevant information
+                paper_meta_info: PaperMetaInfo = output.get("paper_meta_info")
+                samples_complete_info: List[SampleCompleteInfo] = output.get("samples_complete_info", [])
 
-            # Process samples and variables
-            for sample_id, sample_info in enumerate(samples_complete_info):
-                samples_writer.writerow([
-                    paper_id,
-                    sample_id,
-                    sample_info.sample_name,
-                    sample_info.sample_basic_info.sample_size,
-                    sample_info.sample_basic_info.sample_description,
-                    sample_info.sample_basic_info.country,
-                    sample_info.sample_basic_info.sampling_technique,
-                    sample_info.sample_basic_info.sample_type,
-                    sample_info.sample_basic_info.mean_age,
-                    sample_info.sample_basic_info.sd_age,
-                    sample_info.sample_basic_info.male_n,
-                    sample_info.sample_basic_info.female_n,
-                    sample_info.sample_basic_info.major_ethnicity,
-                    sample_info.sample_basic_info.major_ethnicity_percentage,
-                    sample_info.sample_basic_info.response_rate
-                ])
-
-                for var_info in sample_info.variables_info:
-                    variables_writer.writerow([
+                if paper_meta_info and samples_complete_info:
+                    # Write paper information
+                    papers_writer.writerow([
                         paper_id,
-                        sample_id,
-                        var_info.variable_name,
-                        var_info.variable_type,
-                        var_info.scale_measure,
-                        var_info.reliability,
-                        var_info.mean,
-                        var_info.standard_deviation
+                        paper_meta_info.title,
+                        paper_meta_info.publication_year,
+                        paper_meta_info.journal,
+                        paper_meta_info.published_status,
+                        paper_meta_info.publication_type,
+                        output.get("paper_relevance", False)
                     ])
 
-                for corr_info in sample_info.correlations_info:
-                    correlations_writer.writerow([
-                        paper_id,
-                        sample_id,
-                        corr_info.variable_pair[0],
-                        corr_info.variable_pair[1],
-                        corr_info.exists,
-                        corr_info.correlation_coefficient
-                    ])
+                    # Process samples and variables
+                    for sample_id, sample_info in enumerate(samples_complete_info):
+                        samples_writer.writerow([
+                            paper_id,
+                            sample_id,
+                            sample_info.sample_name,
+                            sample_info.sample_basic_info.sample_size,
+                            sample_info.sample_basic_info.sample_description,
+                            sample_info.sample_basic_info.country,
+                            sample_info.sample_basic_info.sampling_technique,
+                            sample_info.sample_basic_info.sample_type,
+                            sample_info.sample_basic_info.mean_age,
+                            sample_info.sample_basic_info.sd_age,
+                            sample_info.sample_basic_info.male_n,
+                            sample_info.sample_basic_info.female_n,
+                            sample_info.sample_basic_info.major_ethnicity,
+                            sample_info.sample_basic_info.major_ethnicity_percentage,
+                            sample_info.sample_basic_info.response_rate
+                        ])
+
+                        for var_info in sample_info.variables_info:
+                            variables_writer.writerow([
+                                paper_id,
+                                sample_id,
+                                var_info.variable_name,
+                                var_info.variable_type,
+                                var_info.scale_measure,
+                                var_info.reliability,
+                                var_info.mean,
+                                var_info.standard_deviation
+                            ])
+
+                        for corr_info in sample_info.correlations_info:
+                            correlations_writer.writerow([
+                                paper_id,
+                                sample_id,
+                                corr_info.variable_pair[0],
+                                corr_info.variable_pair[1],
+                                corr_info.exists,
+                                corr_info.correlation_coefficient
+                            ])
+                else:
+                    print(f"Warning: No valid data extracted from {filename}")
+            except Exception as e:
+                print(f"Error processing {filename}: {str(e)}")
 
     # Close all files
     papers_file.close()
