@@ -1,5 +1,7 @@
 import os
 import csv
+import logging
+from datetime import datetime
 from typing import List, Dict
 from src.meta_agent.graph import MetaAnalysisGraph
 from src.meta_agent.data_types import FinalMetaAnalysisInfo, SampleCompleteInfo, PaperMetaInfo, VariableInfoInSample, CorrelationInfoInSample
@@ -7,15 +9,22 @@ from src.utils.initialization import initialize_env
 
 initialize_env()
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 def process_papers(input_dir: str, output_dir: str, dependent_variable: str, independent_variables: List[str]):
     meta_analysis = MetaAnalysisGraph()
     graph = meta_analysis.create_meta_analysis_graph()
 
     # Prepare output CSV files
-    papers_file = open(os.path.join(output_dir, 'papers.csv'), 'w', newline='', encoding='utf-8')
-    samples_file = open(os.path.join(output_dir, 'samples.csv'), 'w', newline='', encoding='utf-8')
-    variables_file = open(os.path.join(output_dir, 'variables.csv'), 'w', newline='', encoding='utf-8')
-    correlations_file = open(os.path.join(output_dir, 'correlations.csv'), 'w', newline='', encoding='utf-8')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamped_output_dir = os.path.join(output_dir, timestamp)
+    os.makedirs(timestamped_output_dir, exist_ok=True)
+
+    papers_file = open(os.path.join(timestamped_output_dir, 'papers.csv'), 'w', newline='', encoding='utf-8')
+    samples_file = open(os.path.join(timestamped_output_dir, 'samples.csv'), 'w', newline='', encoding='utf-8')
+    variables_file = open(os.path.join(timestamped_output_dir, 'variables.csv'), 'w', newline='', encoding='utf-8')
+    correlations_file = open(os.path.join(timestamped_output_dir, 'correlations.csv'), 'w', newline='', encoding='utf-8')
 
     papers_writer = csv.writer(papers_file)
     samples_writer = csv.writer(samples_file)
@@ -29,6 +38,7 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
     correlations_writer.writerow(['paper_id', 'sample_id', 'variable1', 'variable2', 'exists', 'correlation_coefficient'])
 
     # Process each PDF in the input directory
+
     for filename in os.listdir(input_dir):
         if filename.endswith('.pdf'):
             paper_path = os.path.join(input_dir, filename)
@@ -42,7 +52,7 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                     "dependent_variable": dependent_variable
                 })
 
-                print(f"output from invoking graph: {output}")
+                logging.info(f"output from invoking graph: {output}")
 
                 # Extract relevant information
                 paper_meta_info: PaperMetaInfo = output.get("paper_meta_info")
@@ -102,9 +112,9 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                                 corr_info.correlation_coefficient
                             ])
                 else:
-                    print(f"Warning: No valid data extracted from {filename}")
+                    logging.warning(f"No valid data extracted from {filename}")
             except Exception as e:
-                print(f"Error processing {filename}: {str(e)}")
+                logging.error(f"Error processing {filename}: {str(e)}")
 
     # Close all files
     papers_file.close()
@@ -115,11 +125,11 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
 if __name__ == "__main__":
     input_dir = "data/candidate_papers"
     output_dir = "data/output"
-    dependent_variable = "individual undermining"
-    independent_variables = ["neuroticism", "narcissism"]
+    dependent_variable = "Honesty-Humility"
+    independent_variables = ["leader effectiveness","leader emergence"]
 
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
 
     process_papers(input_dir, output_dir, dependent_variable, independent_variables)
-    print("Processing complete. Output files are in:", output_dir)
+    logging.info(f"Processing complete. Output files are in: {output_dir}")

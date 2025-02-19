@@ -32,7 +32,8 @@ PAPER_RELEVANCE_PROMPT = PromptTemplate.from_template(
 
     Instructions:
     1. As long as the paper has both of the variables in the data, the paper is relevant.
-    2. It's possible both variables appeared as the independent variables in the paper provided.
+    2. It should be considered relevant if the variables are not directly mentioned but generally related to the research topic.
+    3. It's possible both variables appeared as the independent variables in the paper provided.
 
     Paper Content:
     {paper_content}
