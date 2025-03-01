@@ -1,12 +1,8 @@
-import json, os, operator
+import json, os, operator, logging
 from typing import Annotated, List, Optional, Literal, Dict
 from typing_extensions import TypedDict
 
 from langchain.llms import OpenAI
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
-from langchain.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langgraph.graph import END, StateGraph
 from langgraph.constants import Send
@@ -18,13 +14,16 @@ from .data_types import (
 )
 
 from src.utils.helpers import get_llamaparsed_doc, pretty_print_sample_info
-from src.utils.models import GPT4O_LANGCHAIN_NEW
 from .chains import (
     get_is_paper_relevant_chain, 
     get_extract_paper_meta_info_chain, 
     get_extract_samples_basic_info_chain,
     get_extract_variables_info_from_sample_chain
 )
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 
 class GraphState(TypedDict):
     paper_path: str  # Path to the paper file
@@ -45,9 +44,9 @@ class MetaAnalysisGraph:
         # Add worklog entry for loading and parsing PDF
         worklog_entry = f"Loaded and parsed PDF from {state['paper_path']}"
         state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
-        print("Worklog:", state["worklog"])
+        logger.info("Worklog: %s", state["worklog"])
         documents = get_llamaparsed_doc(state["paper_path"])
-        print(documents[0].page_content)  # Print the first 100 characters of the document
+        logger.info(documents[0].page_content)  # Log the first 100 characters of the document
         return {
             "paper_content": documents, 
             "worklog": state["worklog"]
@@ -57,7 +56,7 @@ class MetaAnalysisGraph:
         # Add worklog entry for judging paper relevance
         worklog_entry = f"Judging paper relevance for {state['paper_path']}"
         state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
-        print("Worklog:", state["worklog"])
+        logger.info("Worklog: %s", state["worklog"])
 
         dependent_variable = state["dependent_variable"]
         independent_variables = state["independent_variables"]
@@ -71,14 +70,14 @@ class MetaAnalysisGraph:
                 "paper_content": paper_content
             }
         )
-        print("Paper Relevance:", paper_relevance.is_relevant)
+        logger.info("Paper Relevance: %s", paper_relevance.is_relevant)
         return {"paper_relevance": paper_relevance.is_relevant, "worklog": state["worklog"]} 
 
     def route_based_on_relevance(self, state: GraphState) -> Literal["end", "relevant"]:
         # Add worklog entry for routing based on relevance
         worklog_entry = f"Routing based on relevance for {state['paper_path']}"
         state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
-        print("Worklog:", state["worklog"])
+        logger.info("Worklog: %s", state["worklog"])
 
         if state.get("paper_relevance"):
             return "relevant"
@@ -93,7 +92,7 @@ class MetaAnalysisGraph:
             }
         )
         paper_meta_info = PaperMetaInfo.parse_obj(output)
-        print("Paper Meta Info:", paper_meta_info)
+        logger.info("Paper Meta Info: %s", paper_meta_info)
         return {"paper_meta_info": paper_meta_info}
 
     def extract_samples_info(self, state: GraphState) -> GraphState:
@@ -104,7 +103,7 @@ class MetaAnalysisGraph:
         
         worklog_entry = f"Extracting samples info from paper content"
         state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
-        print("Worklog:", state["worklog"])
+        logger.info("Worklog: %s", state["worklog"])
         # Extract sample information from the paper content
         chain = get_extract_samples_basic_info_chain()
         output = chain.invoke(
@@ -113,7 +112,7 @@ class MetaAnalysisGraph:
             }
         )
         samples_basic_info = output.sample_info
-        print("Samples Info:", samples_basic_info)
+        logger.info("Samples Info: %s", samples_basic_info)
         
         return {
             "samples_basic_info": samples_basic_info,
@@ -147,7 +146,7 @@ class MetaAnalysisGraph:
 
         worklog_entry = f"Extracting variable information in sample {state['sample_basic_info'].sample_name}"
         state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
-        print("worklog:", state["worklog"])
+        logger.info("worklog: %s", state["worklog"])
 
         sample_basic_info = state["sample_basic_info"]
         sample_name = sample_basic_info.sample_name
@@ -170,7 +169,7 @@ class MetaAnalysisGraph:
             }
         )
 
-        print("Variables Info:", output)
+        logger.info("Variables Info: %s", output)
 
         sample_complete_info = SampleCompleteInfo(
             sample_name=sample_name,
@@ -179,7 +178,7 @@ class MetaAnalysisGraph:
             correlations_info=output.correlations_info
         )
 
-        print("Sample_complete_info: \n\n", sample_complete_info)
+        logger.info("Sample_complete_info: \n\n%s", sample_complete_info)
 
         return {
             "samples_complete_info": [sample_complete_info], 
@@ -225,7 +224,7 @@ class MetaAnalysisGraph:
         workflow.add_edge("synthesize_meta_info", END)
 
         graph = workflow.compile()
-        print(graph.get_graph().draw_ascii())
+        logger.info(graph.get_graph().draw_ascii())
         return graph
 
 if __name__ == "__main__":
@@ -245,11 +244,11 @@ if __name__ == "__main__":
         "dependent_variable": dependent_variable
     })    
 
-    print("--- PRINTING AGENT OUTPUT ---\n\n\n\n")
+    logger.info("--- PRINTING AGENT OUTPUT ---\n\n\n\n")
 
-    print("--- Paper Meta Info ---")
-    print(output["paper_meta_info"])
+    logger.info("--- Paper Meta Info ---")
+    logger.info(output["paper_meta_info"])
 
-    print("--- Samples Complete Info ---")
+    logger.info("--- Samples Complete Info ---")
     for sample in output["samples_complete_info"]:
         pretty_print_sample_info(sample)

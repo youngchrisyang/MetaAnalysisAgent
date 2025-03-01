@@ -38,27 +38,35 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
     correlations_writer.writerow(['paper_id', 'sample_id', 'variable1', 'variable2', 'exists', 'correlation_coefficient'])
 
     # Process each PDF in the input directory
+    # Log start of processing
+    logging.info(f"Starting to process PDFs from directory: {input_dir}")
+    logging.info(f"Output files will be written to: {timestamped_output_dir}")
+    logging.info(f"Processing papers for dependent variable '{dependent_variable}' and independent variables {independent_variables}")
 
+    logging.info(f"Processing the following files: {os.listdir(input_dir)}")
     for filename in os.listdir(input_dir):
         if filename.endswith('.pdf'):
             paper_path = os.path.join(input_dir, filename)
             paper_id = os.path.splitext(filename)[0]  # Use filename without extension as paper_id
 
+            logging.info(f"Processing paper: {filename}")
             try:
                 # Invoke the graph
+                logging.info(f"Invoking graph analysis for {filename}")
                 output = graph.invoke({
                     "paper_path": paper_path,
                     "independent_variables": independent_variables,
                     "dependent_variable": dependent_variable
                 })
 
-                logging.info(f"output from invoking graph: {output}")
+                logging.info(f"Output from invoking graph: {output}")
 
                 # Extract relevant information
                 paper_meta_info: PaperMetaInfo = output.get("paper_meta_info")
                 samples_complete_info: List[SampleCompleteInfo] = output.get("samples_complete_info", [])
 
                 if paper_meta_info and samples_complete_info:
+                    logging.info(f"Writing data for paper: {paper_meta_info.title}")
                     # Write paper information
                     papers_writer.writerow([
                         paper_id,
@@ -71,7 +79,9 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                     ])
 
                     # Process samples and variables
+                    logging.info(f"Processing {len(samples_complete_info)} samples from {filename}")
                     for sample_id, sample_info in enumerate(samples_complete_info):
+                        logging.debug(f"Writing sample {sample_id} data: {sample_info.sample_name}")
                         samples_writer.writerow([
                             paper_id,
                             sample_id,
@@ -90,6 +100,7 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                             sample_info.sample_basic_info.response_rate
                         ])
 
+                        logging.debug(f"Writing {len(sample_info.variables_info)} variables for sample {sample_id}")
                         for var_info in sample_info.variables_info:
                             variables_writer.writerow([
                                 paper_id,
@@ -102,25 +113,28 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                                 var_info.standard_deviation
                             ])
 
+                        logging.debug(f"Writing {len(sample_info.correlations_info)} correlations for sample {sample_id}")
                         for corr_info in sample_info.correlations_info:
                             correlations_writer.writerow([
                                 paper_id,
                                 sample_id,
-                                corr_info.variable_pair[0],
-                                corr_info.variable_pair[1],
+                                corr_info.variable1,
+                                corr_info.variable2,
                                 corr_info.exists,
                                 corr_info.correlation_coefficient
                             ])
                 else:
                     logging.warning(f"No valid data extracted from {filename}")
             except Exception as e:
-                logging.error(f"Error processing {filename}: {str(e)}")
+                logging.error(f"Error processing {filename}: {str(e)}", exc_info=True)
 
     # Close all files
+    logging.info("Closing output files")
     papers_file.close()
     samples_file.close()
     variables_file.close()
     correlations_file.close()
+    logging.info("Processing complete")
 
 if __name__ == "__main__":
     input_dir = "data/candidate_papers"

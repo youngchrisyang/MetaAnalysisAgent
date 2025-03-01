@@ -10,7 +10,6 @@ def get_llamaparsed_doc(file_path):
     document = [doc.to_langchain_format() for doc in document]
     return document
     
-
 def pretty_print_sample_info(sample_info: SampleCompleteInfo):
     def format_value(value: Any) -> str:
         if isinstance(value, float):

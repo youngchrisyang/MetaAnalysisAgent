@@ -1,4 +1,4 @@
-from langchain.pydantic_v1 import BaseModel,Field
+from pydantic import BaseModel,Field
 from typing import List, Literal, Optional, Dict
 
 class PaperMetaInfo(BaseModel):
@@ -33,7 +33,8 @@ class VariableInfoInSample(BaseModel):
     standard_deviation: Optional[float] = Field(description="The standard deviation of the variable")
 
 class CorrelationInfoInSample(BaseModel):
-    variable_pair: tuple = Field(description="The pair of variables, represented as a tuple of two strings, sorted alphabetically")
+    variable1: str = Field(description="The first variable in the pair")
+    variable2: str = Field(description="The second variable in the pair")
     exists: bool = Field(description="Whether the correlation exists for an independent variable and the dependent variable")
     correlation_coefficient: Optional[float] = Field(description="The correlation coefficient between a pair of variables")
 

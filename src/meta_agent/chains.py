@@ -7,7 +7,7 @@ from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.prompts import PromptTemplate
 from langchain.agents import AgentExecutor, create_react_agent
-from langchain.pydantic_v1 import BaseModel,Field
+from pydantic import BaseModel,Field
 
 from src.utils.models import GPT4O_LANGCHAIN_NEW
 from .data_types import (
@@ -138,9 +138,10 @@ EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = PromptTemplate.from_template(
     - standard_deviation: The standard deviation of the variable.
 
     3. For each pair of variables, determine if there is information on correlation between them. If so, extract the correlation information.
-    - variable_pair: The pair of variables, represented as a tuple of two strings, sorted alphabetically. Remember to extract for any pairs.
-    - exists: Whether the correlation exists for a pair of variables.
-    - correlation_coefficient: The correlation coefficient between a pair of variables.
+    - variable1: The first variable in the pair.
+    - variable2: The second variable in the pair.
+    - exists: Whether the correlation exists for this pair of variables.
+    - correlation_coefficient: The correlation coefficient between the pair of variables.
 
     Sample Description:
     {sample_description}
