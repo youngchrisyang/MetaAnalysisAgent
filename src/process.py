@@ -12,6 +12,13 @@ initialize_env()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Add console handler to make logs visible
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 def process_papers(input_dir: str, output_dir: str, dependent_variable: str, independent_variables: List[str]):
     meta_analysis = MetaAnalysisGraph()
     graph = meta_analysis.create_meta_analysis_graph()
