@@ -39,7 +39,7 @@ This project is an automated meta-analysis agent that processes academic papers 
 
    **Option 2: Using Conda**
    ```
-   conda create -n <your_env_name> python=3.9
+   conda create -n <your_env_name> python=3.10
    conda activate <your_env_name>
    pip install -r requirements.txt
    ```
