@@ -89,6 +89,7 @@ EXTRACT_SAMPLES_BASIC_INFO_PROMPT = PromptTemplate.from_template(
     1. Determine how many different samples were used in the paper.
     2. For each sample, first provide a name and description to the sample. \
         Thenextract the basic information about the sample.
+    3. Please try your best to extract the information. If you are not sure about the information, you can leave it blank. Please do not make up information.
 
     For each sample, please extract the following information:
     - sample_name: The name of the sample. If the authers didn't provide a name, you can generate a name based on the information you see. Please make sure different samples have different names.
@@ -99,8 +100,8 @@ EXTRACT_SAMPLES_BASIC_INFO_PROMPT = PromptTemplate.from_template(
     - sample_size: The number of participants in the sample (Sample data size N)
     - mean_age: The average age of participants
     - sd_age: The standard deviation of the ages
-    - male_n: The number of male participants
-    - female_n: The number of female participants
+    - male_n: The number of male participants. If the authors didn't provide this information, you can estimate it based on the sample size and the gender distribution.
+    - female_n: The number of female participants. If the authors didn't provide this information, you can estimate it based on the sample size and the gender distribution.
     - major_ethnicity: The major ethnicity of the sample
     - major_ethnicity_percentage: The percentage of the major ethnicity
     - response_rate: The percentage of participants who responded to the study
@@ -157,4 +158,3 @@ EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = PromptTemplate.from_template(
 
 def get_extract_variables_info_from_sample_chain(llm = GPT4O_LANGCHAIN_NEW):
     return EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT | llm.with_structured_output(ExtractVariablesInfoFromSample)
-
