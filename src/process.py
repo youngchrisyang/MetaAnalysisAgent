@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict
 from src.meta_agent.graph import MetaAnalysisGraph
-from src.meta_agent.data_types import FinalMetaAnalysisInfo, SampleCompleteInfo, PaperMetaInfo, VariableInfoInSample, CorrelationInfoInSample
+from src.meta_agent.data_types import FinalMetaAnalysisInfo, SampleCompleteInfo, PaperMetaInfo, VariableInfoInSample, CorrelationInfoInSample, SampleBasicInfo
 from src.utils.initialization import initialize_env
 
 initialize_env()
@@ -19,7 +19,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-def process_papers(input_dir: str, output_dir: str, dependent_variable: str, independent_variables: List[str]):
+def process_papers(input_dir: str, output_dir: str, dependent_variable: str, independent_variables: List[str], user_instructions=None):
     meta_analysis = MetaAnalysisGraph()
     graph = meta_analysis.create_meta_analysis_graph()
 
@@ -38,11 +38,20 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
     variables_writer = csv.writer(variables_file)
     correlations_writer = csv.writer(correlations_file)
 
-    # Write headers
+    # Write headers dynamically based on the model fields
     papers_writer.writerow(['paper_id', 'title', 'publication_year', 'journal', 'published_status', 'publication_type', 'is_relevant'])
-    samples_writer.writerow(['paper_id', 'sample_id', 'sample_name', 'sample_size', 'sample_description', 'country', 'sampling_technique', 'sample_type', 'mean_age', 'sd_age', 'male_n', 'female_n', 'major_ethnicity', 'major_ethnicity_percentage', 'response_rate'])
-    variables_writer.writerow(['paper_id', 'sample_id', 'variable_name', 'variable_type', 'scale_measure', 'reliability', 'mean', 'standard_deviation'])
-    correlations_writer.writerow(['paper_id', 'sample_id', 'variable1', 'variable2', 'exists', 'correlation_coefficient'])
+    
+    # Get sample fields dynamically from the model
+    sample_fields = ['paper_id', 'sample_id', 'sample_name'] + list(SampleBasicInfo.__annotations__.keys())
+    samples_writer.writerow(sample_fields)
+    
+    # Get variable fields dynamically
+    variable_fields = ['paper_id', 'sample_id'] + list(VariableInfoInSample.__annotations__.keys())
+    variables_writer.writerow(variable_fields)
+    
+    # Get correlation fields dynamically
+    correlation_fields = ['paper_id', 'sample_id'] + list(CorrelationInfoInSample.__annotations__.keys())
+    correlations_writer.writerow(correlation_fields)
 
     # Process each PDF in the input directory
     # Log start of processing
@@ -54,7 +63,7 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
     for filename in os.listdir(input_dir):
         if filename.endswith('.pdf'):
             paper_path = os.path.join(input_dir, filename)
-            paper_id = os.path.splitext(filename)[0]  # Use filename without extension as paper_id
+            file_id = os.path.splitext(filename)[0]  # Use as fallback if metadata extraction fails
 
             logging.info(f"Processing paper: {filename}")
             try:
@@ -63,7 +72,8 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                 output = graph.invoke({
                     "paper_path": paper_path,
                     "independent_variables": independent_variables,
-                    "dependent_variable": dependent_variable
+                    "dependent_variable": dependent_variable,
+                    "user_instructions": user_instructions
                 })
 
                 logging.info(f"Output from invoking graph: {output}")
@@ -72,6 +82,9 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                 paper_meta_info: PaperMetaInfo = output.get("paper_meta_info")
                 samples_complete_info: List[SampleCompleteInfo] = output.get("samples_complete_info", [])
 
+                # Extract paper_id from metadata, fallback to filename if not available
+                paper_id = getattr(paper_meta_info, "paper_id", file_id) if paper_meta_info else file_id
+                
                 if paper_meta_info and samples_complete_info:
                     logging.info(f"Writing data for paper: {paper_meta_info.title}")
                     # Write paper information
@@ -89,47 +102,37 @@ def process_papers(input_dir: str, output_dir: str, dependent_variable: str, ind
                     logging.info(f"Processing {len(samples_complete_info)} samples from {filename}")
                     for sample_id, sample_info in enumerate(samples_complete_info):
                         logging.debug(f"Writing sample {sample_id} data: {sample_info.sample_name}")
-                        samples_writer.writerow([
-                            paper_id,
-                            sample_id,
-                            sample_info.sample_name,
-                            sample_info.sample_basic_info.sample_size,
-                            sample_info.sample_basic_info.sample_description,
-                            sample_info.sample_basic_info.country,
-                            sample_info.sample_basic_info.sampling_technique,
-                            sample_info.sample_basic_info.sample_type,
-                            sample_info.sample_basic_info.mean_age,
-                            sample_info.sample_basic_info.sd_age,
-                            sample_info.sample_basic_info.male_n,
-                            sample_info.sample_basic_info.female_n,
-                            sample_info.sample_basic_info.major_ethnicity,
-                            sample_info.sample_basic_info.major_ethnicity_percentage,
-                            sample_info.sample_basic_info.response_rate
-                        ])
+                        
+                        # Create a row with all sample fields
+                        sample_row = [paper_id, sample_id, sample_info.sample_name]
+                        
+                        # Dynamically add all fields from sample_basic_info
+                        for field in SampleBasicInfo.__annotations__.keys():
+                            sample_row.append(getattr(sample_info.sample_basic_info, field, None))
+                        
+                        samples_writer.writerow(sample_row)
 
                         logging.debug(f"Writing {len(sample_info.variables_info)} variables for sample {sample_id}")
                         for var_info in sample_info.variables_info:
-                            variables_writer.writerow([
-                                paper_id,
-                                sample_id,
-                                var_info.variable_name,
-                                var_info.variable_type,
-                                var_info.scale_measure,
-                                var_info.reliability,
-                                var_info.mean,
-                                var_info.standard_deviation
-                            ])
+                            # Create a row with all variable fields
+                            var_row = [paper_id, sample_id]
+                            
+                            # Dynamically add all fields from variable_info
+                            for field in VariableInfoInSample.__annotations__.keys():
+                                var_row.append(getattr(var_info, field, None))
+                                
+                            variables_writer.writerow(var_row)
 
                         logging.debug(f"Writing {len(sample_info.correlations_info)} correlations for sample {sample_id}")
                         for corr_info in sample_info.correlations_info:
-                            correlations_writer.writerow([
-                                paper_id,
-                                sample_id,
-                                corr_info.variable1,
-                                corr_info.variable2,
-                                corr_info.exists,
-                                corr_info.correlation_coefficient
-                            ])
+                            # Create a row with all correlation fields
+                            corr_row = [paper_id, sample_id]
+                            
+                            # Dynamically add all fields from correlation_info
+                            for field in CorrelationInfoInSample.__annotations__.keys():
+                                corr_row.append(getattr(corr_info, field, None))
+                                
+                            correlations_writer.writerow(corr_row)
                 else:
                     logging.warning(f"No valid data extracted from {filename}")
             except Exception as e:

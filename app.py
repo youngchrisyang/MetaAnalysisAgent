@@ -89,6 +89,45 @@ with st.sidebar:
         help="Directory where result files will be saved"
     )
     
+    # Custom instructions section - moved below output directory
+    with st.expander("Advanced: Custom Instructions"):
+        st.markdown("""
+        You can customize the instructions for each step of the meta-analysis process.
+        The default instructions are shown below - modify them as needed.
+        """)
+        
+        # Import default instructions from configs
+        from src.utils.configs import (
+            DEFAULT_PAPER_RELEVANCE_INSTRUCTIONS,
+            DEFAULT_PAPER_META_INFO_INSTRUCTIONS,
+            DEFAULT_SAMPLES_EXTRACTION_INSTRUCTIONS,
+            DEFAULT_VARIABLES_EXTRACTION_INSTRUCTIONS
+        )
+        
+        paper_relevance_instructions = st.text_area(
+            "Paper Relevance Instructions",
+            value=DEFAULT_PAPER_RELEVANCE_INSTRUCTIONS,
+            help="Instructions for determining if a paper is relevant to your meta-analysis"
+        )
+        
+        paper_meta_info_instructions = st.text_area(
+            "Paper Meta Information Instructions",
+            value=DEFAULT_PAPER_META_INFO_INSTRUCTIONS,
+            help="Instructions for extracting paper metadata"
+        )
+        
+        samples_extraction_instructions = st.text_area(
+            "Samples Extraction Instructions",
+            value=DEFAULT_SAMPLES_EXTRACTION_INSTRUCTIONS,
+            help="Instructions for extracting sample information"
+        )
+        
+        variables_extraction_instructions = st.text_area(
+            "Variables Extraction Instructions",
+            value=DEFAULT_VARIABLES_EXTRACTION_INSTRUCTIONS,
+            help="Instructions for extracting variable information"
+        )
+    
     # Process button
     process_button = st.button("Process Papers", type="primary")
     
@@ -144,6 +183,19 @@ if uploaded_files and process_button:
         # Parse independent variables
         independent_variables = [var.strip() for var in independent_variables_input.split(',')]
         
+        # Create user instructions object if any custom instructions were provided
+        user_instructions = None
+        if (paper_relevance_instructions or paper_meta_info_instructions or 
+            samples_extraction_instructions or variables_extraction_instructions):
+            from src.meta_agent.data_types import UserInstructions
+            user_instructions = UserInstructions(
+                paper_relevance_instructions=paper_relevance_instructions or None,
+                paper_meta_info_instructions=paper_meta_info_instructions or None,
+                samples_extraction_instructions=samples_extraction_instructions or None,
+                variables_extraction_instructions=variables_extraction_instructions or None
+            )
+            st.write("Using custom instructions for analysis")
+        
         # Create a temporary directory to store uploaded files
         with tempfile.TemporaryDirectory() as temp_dir:
             # Save uploaded files to the temporary directory
@@ -170,7 +222,7 @@ if uploaded_files and process_button:
             try:
                 # Call the process_papers function with the temporary directory
                 # Make sure all files in the directory are being processed
-                result = process_papers(temp_dir, output_dir, dependent_variable, independent_variables)
+                result = process_papers(temp_dir, output_dir, dependent_variable, independent_variables, user_instructions)
                 logger.info(f"Process papers result: {result}")
                 
                 progress_bar.progress(1.0)

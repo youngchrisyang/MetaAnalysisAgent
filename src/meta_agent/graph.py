@@ -1,7 +1,7 @@
 import json, os, operator, logging
 from typing import Annotated, List, Optional, Literal, Dict
 from typing_extensions import TypedDict
-
+from pydantic import BaseModel, Field
 from langchain.llms import OpenAI
 from langchain_core.documents import Document
 from langgraph.graph import END, StateGraph
@@ -10,7 +10,8 @@ from langgraph.constants import Send
 from .data_types import ( 
     PaperMetaInfo, 
     SampleBasicInfo,
-    SampleCompleteInfo
+    SampleCompleteInfo,
+    UserInstructions
 )
 
 from src.utils.helpers import get_llamaparsed_doc, pretty_print_sample_info
@@ -24,11 +25,11 @@ from .chains import (
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
 class GraphState(TypedDict):
     paper_path: str  # Path to the paper file
     dependent_variable: str  # The dependent variable being studied
     independent_variables: List[str]  # The independent variables being studied
+    user_instructions: Optional[UserInstructions] = None  # User instructions for the meta-analysis
     paper_content: Annotated[Optional[List[Document]], operator.add] = None  # Content of the paper
     paper_relevance: Annotated[Optional[bool], operator.add] = None  # Boolean indicating if the paper is relevant to the meta-analysis
     paper_meta_info: Annotated[Optional[PaperMetaInfo], operator.add] = None  # Metadata information about the paper
@@ -47,9 +48,15 @@ class MetaAnalysisGraph:
         logger.info("Worklog: %s", state["worklog"])
         documents = get_llamaparsed_doc(state["paper_path"])
         logger.info(documents[0].page_content)  # Log the first 100 characters of the document
+        
+        # Initialize user_instructions if not provided
+        if not state.get("user_instructions"):
+            state["user_instructions"] = UserInstructions()
+            
         return {
             "paper_content": documents, 
-            "worklog": state["worklog"]
+            "worklog": state["worklog"],
+            "user_instructions": state.get("user_instructions")
         }
 
     def judge_paper_relevance(self, state: GraphState) -> GraphState:
@@ -61,13 +68,18 @@ class MetaAnalysisGraph:
         dependent_variable = state["dependent_variable"]
         independent_variables = state["independent_variables"]
         paper_content = state["paper_content"]
+        
+        # Get relevance instructions - use user instructions if provided, otherwise use default
+        user_instructions = state.get("user_instructions", UserInstructions())
+        instructions = user_instructions.paper_relevance_instructions or UserInstructions().paper_relevance_instructions
 
         chain = get_is_paper_relevant_chain()
         paper_relevance = chain.invoke(
             {
                 "dependent_variable": dependent_variable, 
                 "independent_variables": independent_variables, 
-                "paper_content": paper_content
+                "paper_content": paper_content,
+                "instructions": instructions
             }
         )
         logger.info("Paper Relevance: %s", paper_relevance.is_relevant)
@@ -85,15 +97,22 @@ class MetaAnalysisGraph:
             return "end"
 
     def extract_paper_meta_info(self, state: GraphState) -> GraphState:
+        worklog_entry = f"Extracting paper meta info for {state['paper_path']}"
+        state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
+        logger.info("Worklog: %s", state["worklog"])
+        
+        # Get meta info instructions - use user instructions if provided, otherwise use default
+        user_instructions = state.get("user_instructions", UserInstructions())
+        instructions = user_instructions.paper_meta_info_instructions or UserInstructions().paper_meta_info_instructions
+        
         chain = get_extract_paper_meta_info_chain()
-        output = chain.invoke(
-            {
-                "paper_content": state["paper_content"][:10]
-            }
-        )
-        paper_meta_info = PaperMetaInfo.parse_obj(output)
+        output = chain({
+            "paper_content": state["paper_content"][:10],
+            "instructions": instructions
+        })
+        paper_meta_info = output  # No need to parse_obj since the chain already returns a PaperMetaInfo object
         logger.info("Paper Meta Info: %s", paper_meta_info)
-        return {"paper_meta_info": paper_meta_info}
+        return {"paper_meta_info": paper_meta_info, "worklog": state["worklog"]}
 
     def extract_samples_info(self, state: GraphState) -> GraphState:
         """
@@ -104,13 +123,17 @@ class MetaAnalysisGraph:
         worklog_entry = f"Extracting samples info from paper content"
         state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
         logger.info("Worklog: %s", state["worklog"])
+        
+        # Get samples extraction instructions - use user instructions if provided, otherwise use default
+        user_instructions = state.get("user_instructions", UserInstructions())
+        instructions = user_instructions.samples_extraction_instructions or UserInstructions().samples_extraction_instructions
+        
         # Extract sample information from the paper content
         chain = get_extract_samples_basic_info_chain()
-        output = chain.invoke(
-            {
-                "paper_content": state["paper_content"]
-            }
-        )
+        output = chain({
+            "paper_content": state["paper_content"],
+            "instructions": instructions
+        })
         samples_basic_info = output.sample_info
         logger.info("Samples Info: %s", samples_basic_info)
         
@@ -132,7 +155,8 @@ class MetaAnalysisGraph:
                     "sample_basic_info": s, 
                     "paper_content": state["paper_content"],
                     "dependent_variable": state["dependent_variable"],
-                    "independent_variables": state["independent_variables"]
+                    "independent_variables": state["independent_variables"],
+                    "user_instructions": state.get("user_instructions")
                 }
             ) 
             for s in state["samples_basic_info"]
@@ -160,14 +184,17 @@ class MetaAnalysisGraph:
         """
 
         variables = [state["dependent_variable"]] + state["independent_variables"]
+        
+        # Get variables extraction instructions
+        instructions = state.get("user_instructions", UserInstructions()).variables_extraction_instructions
+        
         chain = get_extract_variables_info_from_sample_chain()
-        output = chain.invoke(
-            {
-                "paper_content": state["paper_content"],
-                "sample_description": sample_short_description,
-                "variables": variables
-            }
-        )
+        output = chain({
+            "paper_content": state["paper_content"],
+            "sample_description": sample_short_description,
+            "variables": variables,
+            "instructions": instructions
+        })
 
         logger.info("Variables Info: %s", output)
 
@@ -202,11 +229,7 @@ class MetaAnalysisGraph:
         workflow.add_node("extract_variable_info_in_sample", self.extract_variable_info_in_sample)
         workflow.add_node("synthesize_meta_info", self.synthesize_meta_info)
         workflow.set_entry_point("load_and_parse_pdf")
-        # workflow.add_edge("load_and_parse_pdf", "extract_paper_meta_info")
-        # workflow.add_edge("extract_paper_meta_info", "extract_sample_info")
-        # workflow.add_edge("extract_sample_info", "extract_variable_info")
-        # workflow.add_edge("extract_variable_info", "extract_variable_pair_info")
-        # workflow.add_edge("extract_variable_pair_info", "synthesize_meta_info")
+        
         workflow.add_edge("load_and_parse_pdf", "judge_paper_relevance")
         workflow.add_conditional_edges(
             "judge_paper_relevance", 

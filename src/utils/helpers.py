@@ -6,8 +6,25 @@ from src.meta_agent.data_types import SampleCompleteInfo
 from typing import Dict, Any
 
 def get_llamaparsed_doc(file_path):
-    document = LlamaParse(result_type="markdown", language='en').load_data(file_path)
+    # Initialize LlamaParse with additional metadata options
+    parser = LlamaParse(
+        result_type="markdown", 
+        language='en',
+        # Enable metadata extraction including page numbers
+        include_metadata=True
+    )
+    
+    # Parse the document
+    document = parser.load_data(file_path)
+    
+    # Convert to langchain format while preserving metadata
     document = [doc.to_langchain_format() for doc in document]
+    
+    # Ensure page numbers are accessible in the metadata
+    for doc in document:
+        if 'page' not in doc.metadata and 'page_number' in doc.metadata:
+            doc.metadata['page'] = doc.metadata['page_number']
+    
     return document
     
 def pretty_print_sample_info(sample_info: SampleCompleteInfo):

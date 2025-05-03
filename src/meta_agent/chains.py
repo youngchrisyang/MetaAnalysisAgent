@@ -9,7 +9,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain.agents import AgentExecutor, create_react_agent
 from pydantic import BaseModel,Field
 
-from src.utils.models import GPT4O_LANGCHAIN_NEW
+from src.utils.models import GPT4O_LANGCHAIN_NEW, GPT41_LANGCHAIN
 from .data_types import (
     PaperMetaInfo, 
     SampleBasicInfo, 
@@ -18,58 +18,65 @@ from .data_types import (
 )
 
 class IsPaperRelevant(BaseModel):
-    is_relevant: bool
+    is_relevant: bool = Field(description="Whether the paper is relevant to the research topic")
+    reason: str = Field(description="The reason why the paper is relevant or not relevant to the research topic")
 
-PAPER_RELEVANCE_PROMPT = PromptTemplate.from_template(
-    """
-    You are a intelligent academic researcher. You are given the first a few pages of a paper, which includes a title, abstract, and a few pages of content.
-    Your task is to determine if the paper is relevant to a research topic.
-
-    The research topic is to study the relationship between {independent_variables} and {dependent_variable}. 
-
+PAPER_RELEVANCE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "You are an intelligent academic researcher. Your task is to determine if a paper is relevant to a research topic."),
+    ("human", """
+    I need to determine if this paper is relevant to a research topic.
+    
+    The research topic is to study the relationship between {independent_variables} and {dependent_variable}.
+    
     Please respond with "True" if the paper is relevant to the research topic, and "False" if it is not.
     Be generous in determining if a paper is relevant.
 
-    Instructions:
-    1. As long as the paper has both of the variables in the data, the paper is relevant.
-    2. It should be considered relevant if the variables are not directly mentioned but generally related to the research topic.
-    3. It's possible both variables appeared as the independent variables in the paper provided.
-
     Paper Content:
     {paper_content}
+    """),
+    ("human", """
+    Please follow these instructions when determining if the paper is relevant: 
+    {instructions}
+    """),
+])
 
-    Output
-    """
-)
-
-def get_is_paper_relevant_chain(llm = GPT4O_LANGCHAIN_NEW):
+def get_is_paper_relevant_chain(llm = GPT41_LANGCHAIN):
     return PAPER_RELEVANCE_PROMPT | llm.with_structured_output(IsPaperRelevant)
 
-EXTRACT_PAPER_META_INFO_PROMPT = PromptTemplate.from_template(
-    """
-    You are a intelligent academic researcher. Your task is to extract the paper meta information.
-
-    Instructions:
-    1. You are given part of the paper in "Paper Content".
-    2. Fields to extract:
-        - paper_id
-        - title
-        - publication_year
-        - journal
-        - published_status
-        - publication_type
-        - num_studies
-        - num_samples
-
+EXTRACT_PAPER_META_INFO_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "You are an intelligent academic researcher. Your task is to extract paper meta information."),
+    ("human", """
+    I need you to extract the following meta information from this paper:
+    {fields_to_extract}
+    
     Paper Content:
     {paper_content}
-    
-    Output:
-    """
-)
+    """),
+    ("human", """
+    Please follow these instructions when extracting paper meta information:
+    {instructions}
+    """),
+])
 
-def get_extract_paper_meta_info_chain(llm = GPT4O_LANGCHAIN_NEW):
-    return EXTRACT_PAPER_META_INFO_PROMPT | llm.with_structured_output(PaperMetaInfo)
+def get_extract_paper_meta_info_chain(llm = GPT41_LANGCHAIN):
+    # Generate the fields to extract based on the PaperMetaInfo model
+    fields = []
+    for field_name in PaperMetaInfo.model_fields:
+        field_obj = PaperMetaInfo.model_fields[field_name]
+        description = field_obj.description
+        fields.append(f"- {field_name}: {description}")
+    
+    fields_to_extract = "\n".join(fields)
+    
+    # Create the chain with the dynamically generated fields
+    chain = EXTRACT_PAPER_META_INFO_PROMPT | llm.with_structured_output(PaperMetaInfo)
+    
+    # Return a function that will inject the fields_to_extract into the prompt
+    def invoke_chain(inputs):
+        inputs["fields_to_extract"] = fields_to_extract
+        return chain.invoke(inputs)
+    
+    return invoke_chain
 
 
 class ExtractSamplesBasicInfo(BaseModel):
@@ -80,81 +87,103 @@ class ExtractSamplesBasicInfo(BaseModel):
         """
     )
 
-EXTRACT_SAMPLES_BASIC_INFO_PROMPT = PromptTemplate.from_template(
-    """
-    You are a intelligent academic researcher. 
-    Given a research paper, your task is to extract the sample information from the paper content.
-
-    Instructions:
-    1. Determine how many different samples were used in the paper.
-    2. For each sample, first provide a name and description to the sample. \
-        Thenextract the basic information about the sample.
-    3. Please try your best to extract the information. If you are not sure about the information, you can leave it blank. Please do not make up information.
-
+EXTRACT_SAMPLES_BASIC_INFO_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "You are an intelligent academic researcher. Your task is to extract sample information from research papers."),
+    ("human", """
+    Given this research paper, I need you to extract the sample information.
+    
     For each sample, please extract the following information:
-    - sample_name: The name of the sample. If the authers didn't provide a name, you can generate a name based on the information you see. Please make sure different samples have different names.
-    - sample_description: A description of the sample.
-    - country: The country where the sample was collected
-    - sampling_technique: The sampling technique used (choose from "National representative sample", "Urban/City sample", "Rural/Village sample", or "Other")
-    - sample_type: Brief notes about the source of the sample (e.g., 'clinic' for clinical samples)
-    - sample_size: The number of participants in the sample (Sample data size N)
-    - mean_age: The average age of participants
-    - sd_age: The standard deviation of the ages
-    - male_n: The number of male participants. If the authors didn't provide this information, you can estimate it based on the sample size and the gender distribution.
-    - female_n: The number of female participants. If the authors didn't provide this information, you can estimate it based on the sample size and the gender distribution.
-    - major_ethnicity: The major ethnicity of the sample
-    - major_ethnicity_percentage: The percentage of the major ethnicity
-    - response_rate: The percentage of participants who responded to the study
-
+    {fields_to_extract}
+    
     Research Paper:
     {paper_content}
+    """),
+    ("human", """
+    Please follow these additional instructions when extracting sample information:
+    {instructions}
+    """),
+])
 
-    Output:
-    """
-)
-
-def get_extract_samples_basic_info_chain(llm = GPT4O_LANGCHAIN_NEW):
-    return EXTRACT_SAMPLES_BASIC_INFO_PROMPT | llm.with_structured_output(ExtractSamplesBasicInfo)
+def get_extract_samples_basic_info_chain(llm = GPT41_LANGCHAIN):
+    # Generate the fields to extract based on the SampleBasicInfo model
+    fields = []
+    for field_name in SampleBasicInfo.model_fields:
+        field_obj = SampleBasicInfo.model_fields[field_name]
+        description = field_obj.description
+        fields.append(f"- {field_name}: {description}")
+    
+    fields_to_extract = "\n".join(fields)
+    
+    # Create the chain with the dynamically generated fields
+    chain = EXTRACT_SAMPLES_BASIC_INFO_PROMPT | llm.with_structured_output(ExtractSamplesBasicInfo)
+    
+    # Return a function that will inject the fields_to_extract into the prompt
+    def invoke_chain(inputs):
+        inputs["fields_to_extract"] = fields_to_extract
+        return chain.invoke(inputs)
+    
+    return invoke_chain
 
 
 class ExtractVariablesInfoFromSample(BaseModel):
     variables_info: List[VariableInfoInSample] = Field(description="The desired information for each variable")
     correlations_info: List[CorrelationInfoInSample] = Field(description="The correlations between any pairs of variables")
 
-EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = PromptTemplate.from_template(
-    """
-    You are a intelligent academic researcher. 
-    Given a research paper, your task is to extract the variable information in a specific sample from the paper content.
-
+EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "You are an intelligent academic researcher. Your task is to extract variable information from research papers."),
+    ("human", """
+    I need you to extract variable information for a specific sample from this research paper.
+    
     Instructions:
     1. You will be given the sample description - please complete the task by only using content related to the sample.
     2. For each of the given variables, extract the basic information about the variable related to the sample.
-
+    
     For each variable, please extract the following information:
-    - variable_name: The name of the variable.
-    - variable_type: The type of the variable.
-    - scale_measure: The scale or measure used for the variable.
-    - reliability: The reliability (e.g., Cronbach's alpha) of the scale used.
-    - mean: The mean value of the variable.
-    - standard_deviation: The standard deviation of the variable.
-
-    3. For each pair of variables, determine if there is information on correlation between them. If so, extract the correlation information.
-    - variable1: The first variable in the pair.
-    - variable2: The second variable in the pair.
-    - exists: Whether the correlation exists for this pair of variables.
-    - correlation_coefficient: The correlation coefficient between the pair of variables.
-
+    {variable_fields_to_extract}
+    
+    3. For each pair of variables, determine if there is information on correlation between them. If so, extract the correlation information:
+    {correlation_fields_to_extract}
+    
     Sample Description:
     {sample_description}
-
+    
     Variables: {variables}
-
+    
     Paper Content:
     {paper_content}
+    """),
+    ("human", """
+    Please follow these additional instructions when extracting variable information:
+    {instructions}
+    """),
+])
 
-    Output:
-    """
-)
-
-def get_extract_variables_info_from_sample_chain(llm = GPT4O_LANGCHAIN_NEW):
-    return EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT | llm.with_structured_output(ExtractVariablesInfoFromSample)
+def get_extract_variables_info_from_sample_chain(llm = GPT41_LANGCHAIN):
+    # Generate the fields to extract for variables
+    variable_fields = []
+    for field_name in VariableInfoInSample.model_fields:
+        field_obj = VariableInfoInSample.model_fields[field_name]
+        description = field_obj.description
+        variable_fields.append(f"- {field_name}: {description}")
+    
+    variable_fields_to_extract = "\n".join(variable_fields)
+    
+    # Generate the fields to extract for correlations
+    correlation_fields = []
+    for field_name in CorrelationInfoInSample.model_fields:
+        field_obj = CorrelationInfoInSample.model_fields[field_name]
+        description = field_obj.description
+        correlation_fields.append(f"- {field_name}: {description}")
+    
+    correlation_fields_to_extract = "\n".join(correlation_fields)
+    
+    # Create the chain with the dynamically generated fields
+    chain = EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT | llm.with_structured_output(ExtractVariablesInfoFromSample)
+    
+    # Return a function that will inject the fields_to_extract into the prompt
+    def invoke_chain(inputs):
+        inputs["variable_fields_to_extract"] = variable_fields_to_extract
+        inputs["correlation_fields_to_extract"] = correlation_fields_to_extract
+        return chain.invoke(inputs)
+    
+    return invoke_chain

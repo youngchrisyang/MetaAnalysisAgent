@@ -10,6 +10,12 @@ from .initialization import initialize_env
 initialize_env()
 
 ## OPENAI
+
+GPT41_LANGCHAIN = ChatOpenAI(
+    model_name='gpt-4.1-2025-04-14',
+    temperature=0,
+)
+
 GPT4O_LANGCHAIN = ChatOpenAI(
         model_name='gpt-4o-2024-05-13',
         #model_name='gpt-4o-2024-08-06',
