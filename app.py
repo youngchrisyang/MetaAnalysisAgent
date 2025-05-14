@@ -152,15 +152,80 @@ if not uploaded_files:
         - Correlation data between variables
         """)
         
-        # Sample output preview
-        st.subheader("Sample Output Preview")
-        sample_df = pd.DataFrame({
-            'paper_id': ['paper1', 'paper1', 'paper2'],
-            'variable1': ['Honesty-Humility', 'Honesty-Humility', 'Honesty-Humility'],
-            'variable2': ['leader effectiveness', 'leader emergence', 'leader effectiveness'],
-            'correlation_coefficient': [0.32, 0.18, 0.41]
-        })
-        st.dataframe(sample_df)
+        # Add mermaid flowchart to visualize the workflow
+        st.subheader("Workflow Diagram")
+        
+        # Use st.graphviz_chart instead of markdown for the flowchart
+        workflow_diagram = """
+        digraph {
+            A [label="Load and Parse PDF", shape=box, style=filled, fillcolor=lightgray, URL="#load-and-parse-pdf", tooltip="Click to learn about PDF parsing"]
+            B [label="Judge Paper Relevance", shape=box, style=filled, fillcolor=lightgray, URL="#judge-paper-relevance", tooltip="Click to learn about relevance judgment"]
+            C [label="Extract Paper Meta Info", shape=box, style=filled, fillcolor=lightgray, URL="#extract-paper-meta-info", tooltip="Click to learn about metadata extraction"]
+            D [label="Extract Samples Info", shape=box, style=filled, fillcolor=lightgray, URL="#extract-samples-info", tooltip="Click to learn about sample extraction"]
+            E [label="Extract Variable Info in Sample", shape=box, style=filled, fillcolor=lightgray, URL="#extract-variable-info", tooltip="Click to learn about variable extraction"]
+            F [label="Synthesize Meta Info", shape=box, style=filled, fillcolor=lightgray, URL="#synthesize-meta-info", tooltip="Click to learn about result synthesis"]
+            Z [label="End", shape=box, style=filled, fillcolor=lightgray]
+            
+            A -> B
+            B -> C [label="Relevant"]
+            B -> Z [label="Not Relevant"]
+            C -> D
+            D -> E
+            E -> F
+            F -> Z
+        }
+        """
+        st.graphviz_chart(workflow_diagram)
+    
+    # Workflow step details as a separate section
+    st.subheader("Workflow Step Details")
+    
+    # Create individual expanders for each workflow step
+    with st.expander("Load and Parse PDF"):
+        st.markdown("""
+        In this step, the system loads the PDF file and uses LLaMa Parse to extract 
+        structured text content from the document.
+        """)
+    
+    with st.expander("Judge Paper Relevance"):
+        st.markdown("""
+        The system evaluates whether the paper contains information relevant to the 
+        specified dependent and independent variables.
+        """)
+    
+    with st.expander("Extract Paper Meta Info"):
+        st.markdown("""
+        For relevant papers, the system extracts metadata such as title, authors, 
+        publication year, and journal information.
+        """)
+    
+    with st.expander("Extract Samples Info"):
+        st.markdown("""
+        The system identifies and extracts information about the samples used in the study, 
+        including sample size and demographics.
+        """)
+    
+    with st.expander("Extract Variable Info in Sample"):
+        st.markdown("""
+        For each sample, the system extracts information about how the variables were 
+        measured and their relationships.
+        """)
+    
+    with st.expander("Synthesize Meta Info"):
+        st.markdown("""
+        Finally, the system combines all the extracted information into a structured 
+        format for meta-analysis.
+        """)
+    
+    # Sample output preview
+    st.subheader("Sample Output Preview")
+    sample_df = pd.DataFrame({
+        'paper_id': ['paper1', 'paper1', 'paper2'],
+        'variable1': ['Honesty-Humility', 'Honesty-Humility', 'Honesty-Humility'],
+        'variable2': ['leader effectiveness', 'leader emergence', 'leader effectiveness'],
+        'correlation_coefficient': [0.32, 0.18, 0.41]
+    })
+    st.dataframe(sample_df)
 
 # Process the papers when the button is clicked
 if uploaded_files and process_button:
@@ -318,6 +383,8 @@ if 'result_dir' in st.session_state:
     )
     
     # Basic visualization if there's correlation data
+    # Commenting out the visualization section for now
+    """
     if not st.session_state.correlations_df.empty and 'correlation_coefficient' in st.session_state.correlations_df.columns:
         st.subheader("Correlation Visualization")
         # Filter out rows with missing correlation values
@@ -362,6 +429,7 @@ if 'result_dir' in st.session_state:
                 st.dataframe(pivot_df, use_container_width=True)
         else:
             st.info("No correlation data available for visualization.")
+    """
 
 # Footer
 st.markdown("---")
