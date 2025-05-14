@@ -323,13 +323,43 @@ if 'result_dir' in st.session_state:
         # Filter out rows with missing correlation values
         viz_df = st.session_state.correlations_df.dropna(subset=['correlation_coefficient'])
         if not viz_df.empty:
-            # Create a bar chart of correlations
-            chart_data = viz_df.copy()
-            chart_data['pair'] = chart_data['variable1'] + ' - ' + chart_data['variable2']
-            chart = st.bar_chart(
-                chart_data.set_index('pair')['correlation_coefficient'],
-                use_container_width=True
+            # Create a heatmap of correlations
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            import numpy as np
+            
+            # Pivot the data to create a correlation matrix
+            pivot_df = viz_df.pivot_table(
+                index='variable1', 
+                columns='variable2', 
+                values='correlation_coefficient',
+                aggfunc='mean'  # In case of duplicates, take the mean
             )
+            
+            # Create the heatmap
+            fig, ax = plt.subplots(figsize=(10, 8))
+            mask = np.triu(np.ones_like(pivot_df, dtype=bool))
+            heatmap = sns.heatmap(
+                pivot_df, 
+                annot=True,  # Show correlation values
+                cmap="coolwarm",  # Red-blue colormap
+                vmin=-1, vmax=1,  # Correlation range
+                center=0,  # Center the colormap at zero
+                square=True,  # Make cells square
+                linewidths=.5,  # Add grid lines
+                cbar_kws={"shrink": .8},  # Colorbar settings
+                fmt=".2f",  # Format for annotation (2 decimal places)
+                mask=mask  # Only show lower triangle
+            )
+            plt.title("Correlation Heatmap")
+            plt.tight_layout()
+            
+            # Display the heatmap in Streamlit
+            st.pyplot(fig)
+            
+            # Also provide a table view option
+            with st.expander("View Correlation Table"):
+                st.dataframe(pivot_df, use_container_width=True)
         else:
             st.info("No correlation data available for visualization.")
 
