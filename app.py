@@ -82,14 +82,7 @@ with st.sidebar:
         help="Variables that might influence the dependent variable (e.g., 'leader effectiveness, leader emergence')"
     )
     
-    # Output directory
-    output_dir = st.text_input(
-        "Output Directory",
-        value="data/output",
-        help="Directory where result files will be saved"
-    )
-    
-    # Custom instructions section - moved below output directory
+    # Custom instructions section
     with st.expander("Advanced: Custom Instructions"):
         st.markdown("""
         You can customize the instructions for each step of the meta-analysis process.
@@ -214,25 +207,22 @@ if uploaded_files and process_button:
             logger.info(f"Files in temp directory: {os.listdir(temp_dir)}")
             st.write(f"Processing {len(file_names)} files: {', '.join(file_names)}")
             
-            # Ensure output directory exists
-            os.makedirs(output_dir, exist_ok=True)
-            
             # Process the papers
             status_text.text("Processing papers with AI analysis...")
             try:
                 # Call the process_papers function with the temporary directory
                 # Make sure all files in the directory are being processed
-                result = process_papers(temp_dir, output_dir, dependent_variable, independent_variables, user_instructions)
+                result = process_papers(temp_dir, "data/output", dependent_variable, independent_variables, user_instructions)
                 logger.info(f"Process papers result: {result}")
                 
                 progress_bar.progress(1.0)
                 status_text.text("Processing complete!")
                 
                 # Get the timestamp of the most recent output directory
-                timestamp_dirs = [d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))]
+                timestamp_dirs = [d for d in os.listdir("data/output") if os.path.isdir(os.path.join("data/output", d))]
                 if timestamp_dirs:
                     latest_dir = max(timestamp_dirs)
-                    result_dir = os.path.join(output_dir, latest_dir)
+                    result_dir = os.path.join("data/output", latest_dir)
                     
                     # Store results in session state
                     st.session_state.result_dir = result_dir
@@ -304,6 +294,28 @@ if 'result_dir' in st.session_state:
             "text/csv",
             key='download-correlations'
         )
+    
+    # Add option to download all CSVs as a zip file
+    import io
+    import zipfile
+    
+    # Create a download button for all CSVs in a zip file
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zip_file:
+        # Add each CSV to the zip file
+        zip_file.writestr('papers.csv', st.session_state.papers_df.to_csv(index=False))
+        zip_file.writestr('samples.csv', st.session_state.samples_df.to_csv(index=False))
+        zip_file.writestr('variables.csv', st.session_state.variables_df.to_csv(index=False))
+        zip_file.writestr('correlations.csv', st.session_state.correlations_df.to_csv(index=False))
+    
+    buffer.seek(0)
+    st.download_button(
+        label="Download All Data (ZIP)",
+        data=buffer,
+        file_name="meta_analysis_results.zip",
+        mime="application/zip",
+        key='download-all'
+    )
     
     # Basic visualization if there's correlation data
     if not st.session_state.correlations_df.empty and 'correlation_coefficient' in st.session_state.correlations_df.columns:
