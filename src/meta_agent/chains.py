@@ -12,9 +12,9 @@ from pydantic import BaseModel,Field
 from src.utils.models import GPT4O_LANGCHAIN_NEW, GPT41_LANGCHAIN
 from src.utils.configs import CONFIDENCE_LEVEL_INSTRUCTIONS, WARNINGS_CALLOUTS_INSTRUCTIONS
 from .data_types import (
-    PaperMetaInfo, 
-    SampleBasicInfo, 
-    VariableInfoInSample, 
+    PaperMetaInfo,
+    SampleBasicInfo,
+    VariableInfoInSample,
     CorrelationInfoInSample,
     IdentifyRelatedVariables,
     ExtractCorrelationsForPairs,
@@ -26,29 +26,37 @@ from .data_types import (
 )
 
 class IsPaperRelevant(BaseModel):
-    is_relevant: bool = Field(description="Whether the paper is relevant to the research topic")
-    reason: str = Field(description="The reason why the paper is relevant or not relevant to the research topic")
+    is_relevant: bool = Field(description="Whether the paper is relevant to the research question")
+    reason: str = Field(description="The reason why the paper is relevant or not relevant to the research question")
 
 PAPER_RELEVANCE_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are an intelligent academic researcher. Your task is to determine if a paper is relevant to a research topic."),
     ("human", """
-    I need to determine if this paper is relevant to a research topic.
-    
-    The research topic is to study the relationship between {independent_variables} and {dependent_variable}.
-    
-    Please respond with "True" if the paper is relevant to the research topic, and "False" if it is not.
-    Be generous in determining if a paper is relevant.
+I need to determine if this paper is relevant to a research topic.
 
-    Paper Content:
-    {paper_content}
-    """),
-    ("human", """
-    Please follow these instructions when determining if the paper is relevant: 
-    {instructions}
+The paper is considered relevant if:
+
+(1) The research question topic is to study the relationship between {independent_variables} and {dependent_variable}
+(2) The research question is to study the group differences on variables  {independent_variables} and {dependent_variable} for people in two different groups (e.g., sex, age, etc).
+(3) The research question is to study the group differences on variables  {independent_variables} and {dependent_variable} for people in the same group at different times.
+(4) The research question is to study the odds ratio of one event, such as turnover rate odds ratio for people who had orientation versus those who did not have orientation.
+
+Please respond with "True" if the paper is relevant to the research question, and "False" if it is not.
+Be generous in determining if a paper is relevant.
+
+Paper Content:
+{paper_content}
+"""),
+("human", """
+Please follow these instructions when determining if the paper is relevant: 
+{instructions}
     """),
 ])
 
-def get_is_paper_relevant_chain(llm = GPT41_LANGCHAIN):
+def get_is_paper_relevant_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
     return PAPER_RELEVANCE_PROMPT | llm.with_structured_output(IsPaperRelevant)
 
 EXTRACT_PAPER_META_INFO_PROMPT = ChatPromptTemplate.from_messages([
@@ -71,24 +79,28 @@ EXTRACT_PAPER_META_INFO_PROMPT = ChatPromptTemplate.from_messages([
     """),
 ])
 
-def get_extract_paper_meta_info_chain(llm = GPT41_LANGCHAIN):
+def get_extract_paper_meta_info_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
+
     # Generate the fields to extract based on the PaperMetaInfo model
     fields = []
     for field_name in PaperMetaInfo.model_fields:
         field_obj = PaperMetaInfo.model_fields[field_name]
         description = field_obj.description
         fields.append(f"- {field_name}: {description}")
-    
+
     fields_to_extract = "\n".join(fields)
-    
+
     # Create the chain with the dynamically generated fields
     chain = EXTRACT_PAPER_META_INFO_PROMPT | llm.with_structured_output(PaperMetaInfo)
-    
+
     # Return a function that will inject the fields_to_extract into the prompt
     def invoke_chain(inputs):
         inputs["fields_to_extract"] = fields_to_extract
         return chain.invoke(inputs)
-    
+
     return invoke_chain
 
 
@@ -122,31 +134,34 @@ EXTRACT_SAMPLES_BASIC_INFO_PROMPT = ChatPromptTemplate.from_messages([
     """),
 ])
 
-def get_extract_samples_basic_info_chain(llm = GPT41_LANGCHAIN):
+def get_extract_samples_basic_info_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
+
     # Generate the fields to extract based on the SampleBasicInfo model
     fields = []
     for field_name in SampleBasicInfo.model_fields:
         field_obj = SampleBasicInfo.model_fields[field_name]
         description = field_obj.description
         fields.append(f"- {field_name}: {description}")
-    
+
     fields_to_extract = "\n".join(fields)
-    
+
     # Create the chain with the dynamically generated fields
     chain = EXTRACT_SAMPLES_BASIC_INFO_PROMPT | llm.with_structured_output(ExtractSamplesBasicInfo)
-    
+
     # Return a function that will inject the fields_to_extract into the prompt
     def invoke_chain(inputs):
         inputs["fields_to_extract"] = fields_to_extract
         return chain.invoke(inputs)
-    
+
     return invoke_chain
 
 # ========== NEW CHAIN 1: IDENTIFY ALL RELATED VARIABLES ==========
 IDENTIFY_RELATED_VARIABLES_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are an intelligent academic researcher. Your task is to identify ALL variables in a specific sample that are related to the research topic."),
     ("human", """
-    I need you to identify ALL variables **in this specific sample** that are related to our research variables.
     
     Research Focus:
     - Dependent Variable: {dependent_variable}
@@ -178,7 +193,10 @@ IDENTIFY_RELATED_VARIABLES_PROMPT = ChatPromptTemplate.from_messages([
     """),
 ])
 
-def get_identify_related_variables_chain(llm = GPT41_LANGCHAIN):
+def get_identify_related_variables_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
     # Generate the fields to extract based on the VariableInfoInSample model
     fields = []
     for field_name in VariableInfoInSample.model_fields:
@@ -198,35 +216,88 @@ def get_identify_related_variables_chain(llm = GPT41_LANGCHAIN):
     
     return invoke_chain
 
-# ========== NEW CHAIN 2: EXTRACT CORRELATIONS FOR VARIABLE PAIRS ==========
-EXTRACT_CORRELATIONS_FOR_PAIRS_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", "You are an intelligent academic researcher. Your task is to extract correlation information between specific pairs of variables from research papers."),
+# ========== NEW CHAIN 2A: IDENTIFY CORRELATION TEXT CHUNKS ==========
+class IdentifyCorrelationChunks(BaseModel):
+    correlation_chunks: List[str] = Field(
+        description="List of text chunks from the paper that contain correlation information between any variables"
+    )
+
+IDENTIFY_CORRELATION_CHUNKS_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "You are an intelligent academic researcher. Your task is to identify text chunks from research papers that contain correlation information."),
     ("human", """
-    I need you to extract correlation information for the following specific pairs of variables in this sample.
-    
+    I need you to identify and extract all text chunks from this paper that contain correlation information for the given sample.
+
     Sample Information:
     {sample_description}
-    
-    Variable Pairs to Check:
-    {variable_pairs}
-    
+
+    Variables of Interest:
+    {variables_list}
+
     Your task:
-    For each pair of variables listed above, determine:
-    1. Whether a correlation between these two variables exists in the paper for this sample
-    2. If it exists, extract the correlation coefficient, type (Pearson/Spearman/Kendall), and significance level
-    3. Find the exact sentences or table where this information appears
-    
-    Look for correlations in:
-    - Correlation matrices or tables
-    - Results sections describing relationships
-    - Statistical analyses mentioning these variable pairs
-    - Any numerical relationships between the specified variables
-    
-    For each pair, please extract the following information:
-    {fields_to_extract}
-    
+    1. Scan through the entire paper and identify ANY text chunks that contain correlation information
+    2. Look for correlation matrices, tables, results sections, and statistical analyses
+    3. Extract complete chunks that include:
+       - Correlation coefficients between any variables
+       - Statistical significance information
+       - Variable names and context
+    4. Include surrounding context to make each chunk self-contained
+    5. Focus on chunks relevant to the sample described above
+
+    Search for:
+    - Correlation matrices or correlation tables
+    - Results sections mentioning correlations
+    - Statistical analyses with correlation coefficients
+    - Bivariate correlation results
+    - Correlations embedded in regression or SEM results
+    - Any numerical relationships between variables
+
+    Extract complete, self-contained text chunks that a researcher could understand independently.
+
     Paper Content:
     {paper_content}
+    """),
+])
+
+def get_identify_correlation_chunks_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
+
+    chain = IDENTIFY_CORRELATION_CHUNKS_PROMPT | llm.with_structured_output(IdentifyCorrelationChunks)
+
+    # Return a function that can be called with inputs
+    def invoke_chain(inputs):
+        return chain.invoke(inputs)
+
+    return invoke_chain
+
+# ========== NEW CHAIN 2B: EXTRACT CORRELATIONS FROM CHUNKS ==========
+EXTRACT_CORRELATIONS_FROM_CHUNK_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "You are an intelligent academic researcher. Your task is to extract correlation information from text chunks."),
+    ("human", """
+    I need you to extract correlation information from this text chunk for the given sample.
+
+    Sample Information:
+    {sample_description}
+
+    Variables of Interest:
+    {variables_list}
+
+    Your task:
+    From the text chunk below, extract ALL correlations between ANY pairs of the variables listed above.
+    1. Look for correlation coefficients between any combination of the listed variables. If no correlation is found, do not create an entry for it.
+    2. Extract correlation coefficient (if numerical value is provided), type (Pearson/Spearman/Kendall), and significance level
+    3. Match variable names carefully (look for exact names, synonyms, abbreviations)
+    4. ONLY extract correlations that actually exist and are reported in this chunk
+    5. Do NOT create entries for correlations that are not found or don't exist
+    6. Please do not miss any correlations that exist in the text chunk. Especially when a correlation table is provided, please extract all correlations from the table related to the variable pairs of interest.
+    7. Prefer zero-order correlations. If only adjusted/partial correlations are reported, record them.
+    
+    For each correlation that EXISTS and is found, please extract the following information:
+    {fields_to_extract}
+
+    Text Chunk:
+    {text_chunk}
     """),
     ("human", f"""
     {CONFIDENCE_LEVEL_INSTRUCTIONS}
@@ -235,25 +306,33 @@ EXTRACT_CORRELATIONS_FOR_PAIRS_PROMPT = ChatPromptTemplate.from_messages([
     """),
 ])
 
-def get_extract_correlations_for_pairs_chain(llm = GPT41_LANGCHAIN):
+def get_extract_correlations_from_chunk_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
     # Generate the fields to extract based on the CorrelationInfoInSample model
     fields = []
     for field_name in CorrelationInfoInSample.model_fields:
         field_obj = CorrelationInfoInSample.model_fields[field_name]
         description = field_obj.description
         fields.append(f"- {field_name}: {description}")
-    
+
     fields_to_extract = "\n".join(fields)
-    
+
     # Create the chain with the dynamically generated fields
-    chain = EXTRACT_CORRELATIONS_FOR_PAIRS_PROMPT | llm.with_structured_output(ExtractCorrelationsForPairs)
-    
+    chain = EXTRACT_CORRELATIONS_FROM_CHUNK_PROMPT | llm.with_structured_output(ExtractCorrelationsForPairs)
+
     # Return a function that will inject the fields_to_extract into the prompt
     def invoke_chain(inputs):
         inputs["fields_to_extract"] = fields_to_extract
         return chain.invoke(inputs)
-    
+
     return invoke_chain
+
+# ========== LEGACY CHAIN (kept for compatibility) ==========
+def get_extract_correlations_for_pairs_chain(llm = None):
+    """Legacy function - use get_extract_correlations_from_chunk_chain instead"""
+    return get_extract_correlations_from_chunk_chain(llm)
 
 # ========== NEW CHAIN 3: EXTRACT BETWEEN-GROUP EFFECTS ==========
 EXTRACT_BETWEEN_GROUP_EFFECTS_PROMPT = ChatPromptTemplate.from_messages([
@@ -347,7 +426,10 @@ EXTRACT_BETWEEN_GROUP_EFFECTS_PROMPT = ChatPromptTemplate.from_messages([
     Please provide your analysis in the specified format, ensuring all extracted effects have sufficient group-level statistical data.
     """)])
 
-def get_extract_between_group_effects_chain(llm = GPT41_LANGCHAIN):
+def get_extract_between_group_effects_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
     from .data_types import BetweenGroupEffectInSample
     
     # Generate the fields to extract based on the BetweenGroupEffectInSample model
@@ -408,7 +490,10 @@ EXTRACT_WITHIN_SUBJECT_EFFECTS_PROMPT = ChatPromptTemplate.from_messages([
     """),
 ])
 
-def get_extract_within_subject_effects_chain(llm = GPT41_LANGCHAIN):
+def get_extract_within_subject_effects_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
     from .data_types import WithinSubjectEffectInSample
     
     # Generate the fields to extract based on the WithinSubjectEffectInSample model
@@ -471,7 +556,10 @@ EXTRACT_BINARY_EVENT_EFFECTS_PROMPT = ChatPromptTemplate.from_messages([
     """),
 ])
 
-def get_extract_binary_event_effects_chain(llm = GPT41_LANGCHAIN):
+def get_extract_binary_event_effects_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
     from .data_types import BinaryEventEffectInSample
     
     # Generate the fields to extract based on the BinaryEventEffectInSample model
@@ -561,15 +649,20 @@ Generate a complete HTML document (without the ```html``` tags) that researchers
 """),
 ])
 
-def get_generate_html_report_chain(llm = GPT4O_LANGCHAIN_NEW):
-    """Generate HTML report using LLM"""
+def get_generate_html_report_chain(llm = None):
+    """Generate HTML report using LLM - Always use Claude 4.5 for best report quality"""
+    # Always use Claude 4.5 for HTML report generation, regardless of user selection
+    from src.utils.models import LLM_CLAUDE45_FALLBACK
+    llm = LLM_CLAUDE45_FALLBACK
+
+    # Add timeout and better error handling for HTML generation
     chain = HTML_REPORT_GENERATION_PROMPT | llm | StrOutputParser()
     return chain
 
 # ========== LEGACY CHAIN (kept for compatibility) ==========
 class ExtractVariablesInfoFromSample(BaseModel):
     variables_info: List[VariableInfoInSample] = Field(description="The desired information for each variable")
-    correlations_info: List[CorrelationInfoInSample] = Field(description="The correlations between any pairs of variables")
+    correlations_info: Optional[List[CorrelationInfoInSample]] = Field(description="The correlations between any pairs of variables")
 
 EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are an intelligent academic researcher. Your task is to extract variable information from research papers."),
@@ -605,7 +698,10 @@ EXTRACT_VARIABLES_INFO_FROM_SAMPLE_PROMPT = ChatPromptTemplate.from_messages([
     """),
 ])
 
-def get_extract_variables_info_from_sample_chain(llm = GPT41_LANGCHAIN):
+def get_extract_variables_info_from_sample_chain(llm = None):
+    if llm is None:
+        from src.utils.models import GPT41_LANGCHAIN
+        llm = GPT41_LANGCHAIN
     # Generate the fields to extract for variables
     variable_fields = []
     for field_name in VariableInfoInSample.model_fields:

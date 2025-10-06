@@ -16,6 +16,11 @@ GPT41_LANGCHAIN = ChatOpenAI(
     temperature=0,
 )
 
+GPT5_LANGCHAIN = ChatOpenAI(
+    model_name='gpt-5-2025-08-07',
+    temperature=1,
+)
+
 GPT4O_LANGCHAIN = ChatOpenAI(
         model_name='gpt-4o-2024-05-13',
         #model_name='gpt-4o-2024-08-06',
@@ -44,22 +49,45 @@ GPT35TURBO_LANGCHAIN = ChatOpenAI(
     )
 
 ## ANTHROPIC
-CLAUDE3_LANGCHAIN = ChatAnthropic(
-    model='claude-3-opus-20240229',
-    temperature=0
-    )
+CLAUDE4_SONNET_LANGCHAIN = ChatAnthropic(
+    model="claude-sonnet-4-20250514",
+    temperature=0,
+    max_tokens=64000
+)
 
-CLAUDE35_SONNET_LANGCHAIN =  ChatAnthropic(
-    model="claude-3-5-sonnet-20240620",
-    temperature=0
-    )
+CLAUDE45_SONNET_LANGCHAIN = ChatAnthropic(
+    model="claude-sonnet-4-5-20250929",
+    temperature=0,
+    max_tokens=64000
+)
 
 ## Standard Fallback Model
-LLM_STANDARD_FALLBACK = GPT4O_LANGCHAIN.with_fallbacks(
+LLM_GPT41_FALLBACK = GPT41_LANGCHAIN.with_fallbacks(
     [
-        GPT4O_LANGCHAIN_NEW,
-        CLAUDE35_SONNET_LANGCHAIN,
+        CLAUDE45_SONNET_LANGCHAIN,
+        GPT5_LANGCHAIN,
      ]
+)
+
+LLM_GPT5_FALLBACK = GPT5_LANGCHAIN.with_fallbacks(
+    [
+        CLAUDE45_SONNET_LANGCHAIN,
+        GPT41_LANGCHAIN
+    ]
+)
+
+LLM_CLAUDE45_FALLBACK = CLAUDE45_SONNET_LANGCHAIN.with_fallbacks(
+    [
+        GPT41_LANGCHAIN,
+        GPT5_LANGCHAIN
+    ]
+)
+
+LLM_CLAUDE4_FALLBACK = CLAUDE4_SONNET_LANGCHAIN.with_fallbacks(
+    [
+        GPT41_LANGCHAIN,
+        GPT5_LANGCHAIN
+    ]
 )
 
 def get_embeddings_model() -> Embeddings:

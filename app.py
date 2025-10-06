@@ -414,10 +414,23 @@ def save_instruction(instruction_type, new_content):
 col1, col2 = st.columns([4, 1])
 
 with col1:
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                border: 1px solid #cbd5e1; border-radius: 8px;
+                padding: 1rem; margin: 0.5rem 0;">
+        <div style="color: #dc2626; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem;">
+            🎓 FOR ACADEMIC USE ONLY
+        </div>
+        <div style="color: #475569; font-size: 0.85rem; line-height: 1.4;">
+            This tool is intended solely for academic research and educational purposes.
+            Commercial use is prohibited. Results should be verified by qualified researchers.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.markdown("# Meta-Analysis Agent")
     st.markdown("""
     <p class="subtitle">
-    The Meta-Analysis Agent is an Gen-AI powered research tool for meta analysis data coding designed for academic researchers. 
+    The Meta-Analysis Agent is an Gen-AI powered research tool for meta analysis data coding designed for academic researchers.
     The AI agents help researchers efficiently and accurately code the relevant data given a research question and variables of interests.
     </p>
     """, unsafe_allow_html=True)
@@ -536,7 +549,13 @@ if 'result_dir' in st.session_state:
             st.session_state.papers_df = pd.read_csv(os.path.join(result_dir, "papers.csv"))
             st.session_state.samples_df = pd.read_csv(os.path.join(result_dir, "samples.csv"))
             st.session_state.variables_df = pd.read_csv(os.path.join(result_dir, "variables.csv"))
-            st.session_state.correlations_df = pd.read_csv(os.path.join(result_dir, "correlations.csv"))
+
+            # Conditionally load correlations if it exists
+            correlations_path = os.path.join(result_dir, "correlations.csv")
+            if os.path.exists(correlations_path):
+                st.session_state.correlations_df = pd.read_csv(correlations_path)
+            else:
+                st.session_state.correlations_df = pd.DataFrame()
             
             # Reload effect-specific files if they exist
             effect_files = {
@@ -577,12 +596,12 @@ if 'result_dir' in st.session_state:
             
             # Download button
             st.download_button(
-                "📥 Download Papers Data",
+                "Download Papers Data",
                 st.session_state.papers_df.to_csv(index=False).encode('utf-8'),
                 "papers.csv", "text/csv", key='download-papers'
             )
         else:
-            st.warning("📄 No papers data available. This could happen if:")
+            st.warning("No papers data available. This could indicate:")
             st.markdown("- PDF files failed to parse")
             st.markdown("- All papers were marked as irrelevant")
             st.markdown("- Processing encountered errors")
@@ -593,12 +612,12 @@ if 'result_dir' in st.session_state:
             
             # Download button
             st.download_button(
-                "📥 Download Samples Data",
+                "Download Samples Data",
                 st.session_state.samples_df.to_csv(index=False).encode('utf-8'),
                 "samples.csv", "text/csv", key='download-samples'
             )
         else:
-            st.warning("👥 No samples data available. This could happen if:")
+            st.warning("No samples data available. This could indicate:")
             st.markdown("- No relevant papers were found")
             st.markdown("- Papers didn't contain sample information")
             st.markdown("- Sample extraction failed")
@@ -609,28 +628,29 @@ if 'result_dir' in st.session_state:
             
             # Download button
             st.download_button(
-                "📥 Download Variables Data",
+                "Download Variables Data",
                 st.session_state.variables_df.to_csv(index=False).encode('utf-8'),
                 "variables.csv", "text/csv", key='download-variables'
             )
         else:
-            st.warning("🔬 No variables data available. This could happen if:")
+            st.warning("No variables data available. This could indicate:")
             st.markdown("- No samples were extracted")
             st.markdown("- Papers didn't contain variable information")
             st.markdown("- Variable extraction failed")
     
     with tab_objects[3]:  # Correlations
-        if hasattr(st.session_state, 'correlations_df'):
+        if hasattr(st.session_state, 'correlations_df') and not st.session_state.correlations_df.empty:
             display_professional_table(st.session_state.correlations_df, "Correlation Analysis", show_summary=True)
-            
+
             # Download button
             st.download_button(
-                "📥 Download Correlations Data",
+                "Download Correlations Data",
                 st.session_state.correlations_df.to_csv(index=False).encode('utf-8'),
                 "correlations.csv", "text/csv", key='download-correlations'
             )
         else:
-            st.warning("🔗 No correlations data available. This could happen if:")
+            st.warning("No correlations data available. This could indicate:")
+            st.markdown("- Correlation analysis was not selected")
             st.markdown("- No variables were extracted")
             st.markdown("- Papers didn't report correlations")
             st.markdown("- Correlation extraction failed")
@@ -646,7 +666,7 @@ if 'result_dir' in st.session_state:
             
             # Download button
             st.download_button(
-                "📥 Download Between-Group Effects Data",
+                "Download Between-Group Effects Data",
                 df.to_csv(index=False).encode('utf-8'),
                 "between_group_effects.csv", "text/csv", key='download-between-group'
             )
@@ -660,7 +680,7 @@ if 'result_dir' in st.session_state:
             
             # Download button
             st.download_button(
-                "📥 Download Within-Subject Effects Data",
+                "Download Within-Subject Effects Data",
                 df.to_csv(index=False).encode('utf-8'),
                 "within_subject_effects.csv", "text/csv", key='download-within-subject'
             )
@@ -674,7 +694,7 @@ if 'result_dir' in st.session_state:
             
             # Download button
             st.download_button(
-                "📥 Download Binary Event Effects Data",
+                "Download Binary Event Effects Data",
                 df.to_csv(index=False).encode('utf-8'),
                 "binary_event_effects.csv", "text/csv", key='download-binary-event'
             )
@@ -717,7 +737,7 @@ if 'result_dir' in st.session_state:
             zip_file.writestr('samples.csv', st.session_state.samples_df.to_csv(index=False))
         if hasattr(st.session_state, 'variables_df'):
             zip_file.writestr('variables.csv', st.session_state.variables_df.to_csv(index=False))
-        if hasattr(st.session_state, 'correlations_df'):
+        if hasattr(st.session_state, 'correlations_df') and not st.session_state.correlations_df.empty:
             zip_file.writestr('correlations.csv', st.session_state.correlations_df.to_csv(index=False))
         
         # Include additional effect-specific files if they exist
@@ -758,7 +778,76 @@ if 'result_dir' in st.session_state:
 else:
     # Initial workflow view - no extra containers here
     st.markdown('<div class="workflow-container">', unsafe_allow_html=True)
-    
+
+    # LLM Model Selection (before Step 1)
+    st.markdown('<div class="step-container">', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+        <span class="step-number">⚙️</span>
+        <div>
+            <div class="step-title">Select Language Model</div>
+            <div class="step-description">Choose the AI model for data extraction</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Model selection options
+    model_options = {
+        "GPT-5": "LLM_GPT5_FALLBACK",
+        "GPT-4.1": "LLM_GPT41_FALLBACK",
+        "Claude-4": "LLM_CLAUDE4_FALLBACK",
+        "Claude-4.5": "LLM_CLAUDE45_FALLBACK"
+    }
+
+    model_descriptions = {
+        "GPT-5": "Latest OpenAI model with advanced reasoning capabilities",
+        "GPT-4.1": "Reliable OpenAI model with excellent performance",
+        "Claude-4": "Anthropic's powerful model for detailed analysis",
+        "Claude-4.5": "Latest Anthropic model with enhanced capabilities"
+    }
+
+    selected_model_display = st.selectbox(
+        "Choose the AI model to use for analysis:",
+        options=list(model_options.keys()),
+        index=1,  # Default to GPT-4.1
+        help="Different models have varying strengths. All models include automatic fallbacks to ensure reliability.",
+        key="model_selection"
+    )
+
+    # Store the internal model name
+    st.session_state.selected_model = model_options[selected_model_display]
+
+    # Show model description
+    st.info(f"**{selected_model_display}**: {model_descriptions[selected_model_display]}")
+
+    # Parsing mode selection
+    st.markdown("---")
+    parsing_mode_options = {
+        "Standard": "standard",
+        "Premium": "premium"
+    }
+
+    parsing_mode_descriptions = {
+        "Standard": "Fast and cost-effective parsing suitable for most documents",
+        "Premium": "Advanced parsing with multimodal models for complex papers (7.5¢/page)"
+    }
+
+    selected_parsing_mode_display = st.selectbox(
+        "Choose the document parsing mode:",
+        options=list(parsing_mode_options.keys()),
+        index=0,  # Default to Standard
+        help="Premium mode provides better accuracy for complex documents with tables, figures, and statistical data, but costs more per page.",
+        key="parsing_mode_selection"
+    )
+
+    # Store the internal parsing mode
+    st.session_state.selected_parsing_mode = parsing_mode_options[selected_parsing_mode_display]
+
+    # Show parsing mode description
+    st.info(f"**{selected_parsing_mode_display} Mode**: {parsing_mode_descriptions[selected_parsing_mode_display]}")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # Step 1: Upload Papers
     st.markdown('<div class="step-container">', unsafe_allow_html=True)
     st.markdown("""
@@ -779,9 +868,9 @@ else:
     )
     
     if uploaded_files:
-        st.success(f"✅ {len(uploaded_files)} files uploaded: {', '.join([f.name for f in uploaded_files])}")
+        st.success(f"{len(uploaded_files)} files uploaded: {', '.join([f.name for f in uploaded_files])}")
     else:
-        st.info("📄 No files selected. Please upload PDF papers to begin.")
+        st.info("No files selected. Please upload PDF papers to begin.")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -838,7 +927,7 @@ else:
     
     # Show tooltip for selected effect type
     if selected_effect_type:
-        st.info(f"💡 **{effect_type_options[selected_effect_type]}**: {effect_type_tooltips[selected_effect_type]}")
+        st.info(f"**{effect_type_options[selected_effect_type]}**: {effect_type_tooltips[selected_effect_type]}")
     
     # Conditional target groups input for independent groups
     target_groups = None
@@ -856,13 +945,13 @@ else:
         effect_type_desc = effect_type_options[selected_effect_type]
         st.markdown(f"""
         <div class="variable-focus">
-            🎯 <strong>Research Focus:</strong> {dependent_variable} ← {', '.join(independent_vars)}<br>
-            📊 <strong>Effect Type:</strong> {effect_type_desc}
-            {f'<br>👥 <strong>Target Groups:</strong> {target_groups}' if target_groups else ''}
+            <strong>Research Focus:</strong> {dependent_variable} ← {', '.join(independent_vars)}<br>
+            <strong>Effect Type:</strong> {effect_type_desc}
+            {f'<br><strong>Target Groups:</strong> {target_groups}' if target_groups else ''}
         </div>
         """, unsafe_allow_html=True)
     elif dependent_variable or independent_variables_input:
-        st.info("💡 Define both dependent and independent variables to proceed.")
+        st.info("Define both dependent and independent variables to proceed.")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -878,23 +967,23 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    with st.expander("⚙️ Customize AI Instructions", expanded=False):
+    with st.expander("Customize AI Instructions", expanded=False):
         st.markdown("**Modify how the AI extracts and interprets data from your papers.**")
         
-        instruction_tabs = st.tabs(["📋 Relevance", "📄 Metadata", "👥 Samples", "📊 Variables"])
+        instruction_tabs = st.tabs(["Relevance", "Metadata", "Samples", "Variables"])
         
         with instruction_tabs[0]:
             st.markdown("**Paper Relevance Assessment**")
             paper_relevance_new = st.text_area(
                 "Instructions:", value=st.session_state.custom_instructions['paper_relevance'],
-                height=120, key="paper_relevance_editor"
+                height=200, key="paper_relevance_editor"
             )
             col1, col2 = st.columns([1, 3])
             with col1:
-                if st.button("💾 Save", key="save_paper_relevance"):
+                if st.button("Save", key="save_paper_relevance"):
                     save_instruction('paper_relevance', paper_relevance_new)
             with col2:
-                if st.button("🔄 Reset", key="reset_paper_relevance"):
+                if st.button("Reset", key="reset_paper_relevance"):
                     from src.utils.configs import DEFAULT_PAPER_RELEVANCE_INSTRUCTIONS
                     st.session_state.custom_instructions['paper_relevance'] = DEFAULT_PAPER_RELEVANCE_INSTRUCTIONS
                     st.success("Reset to default!")
@@ -904,14 +993,14 @@ else:
             st.markdown("**Paper Metadata Extraction**")
             paper_meta_new = st.text_area(
                 "Instructions:", value=st.session_state.custom_instructions['paper_meta_info'],
-                height=120, key="paper_meta_editor"
+                height=200, key="paper_meta_editor"
             )
             col1, col2 = st.columns([1, 3])
             with col1:
-                if st.button("💾 Save", key="save_paper_meta"):
+                if st.button("Save", key="save_paper_meta"):
                     save_instruction('paper_meta_info', paper_meta_new)
             with col2:
-                if st.button("🔄 Reset", key="reset_paper_meta"):
+                if st.button("Reset", key="reset_paper_meta"):
                     from src.utils.configs import DEFAULT_PAPER_META_INFO_INSTRUCTIONS
                     st.session_state.custom_instructions['paper_meta_info'] = DEFAULT_PAPER_META_INFO_INSTRUCTIONS
                     st.success("Reset to default!")
@@ -921,14 +1010,14 @@ else:
             st.markdown("**Sample Information Extraction**")
             samples_new = st.text_area(
                 "Instructions:", value=st.session_state.custom_instructions['samples_extraction'],
-                height=120, key="samples_editor"
+                height=200, key="samples_editor"
             )
             col1, col2 = st.columns([1, 3])
             with col1:
-                if st.button("💾 Save", key="save_samples"):
+                if st.button("Save", key="save_samples"):
                     save_instruction('samples_extraction', samples_new)
             with col2:
-                if st.button("🔄 Reset", key="reset_samples"):
+                if st.button("Reset", key="reset_samples"):
                     from src.utils.configs import DEFAULT_SAMPLES_EXTRACTION_INSTRUCTIONS
                     st.session_state.custom_instructions['samples_extraction'] = DEFAULT_SAMPLES_EXTRACTION_INSTRUCTIONS
                     st.success("Reset to default!")
@@ -938,14 +1027,14 @@ else:
             st.markdown("**Variable and Correlation Extraction**")
             variables_new = st.text_area(
                 "Instructions:", value=st.session_state.custom_instructions['variables_extraction'],
-                height=120, key="variables_editor"
+                height=200, key="variables_editor"
             )
             col1, col2 = st.columns([1, 3])
             with col1:
-                if st.button("💾 Save", key="save_variables"):
+                if st.button("Save", key="save_variables"):
                     save_instruction('variables_extraction', variables_new)
             with col2:
-                if st.button("🔄 Reset", key="reset_variables"):
+                if st.button("Reset", key="reset_variables"):
                     from src.utils.configs import DEFAULT_VARIABLES_EXTRACTION_INSTRUCTIONS
                     st.session_state.custom_instructions['variables_extraction'] = DEFAULT_VARIABLES_EXTRACTION_INSTRUCTIONS
                     st.success("Reset to default!")
@@ -973,20 +1062,20 @@ else:
         st.markdown("**Requirements Checklist:**")
         
         requirements = [
-            ("📄 Papers uploaded", uploaded_files is not None),
-            ("🎯 Dependent variable defined", bool(dependent_variable)),
-            ("🔗 Independent variables defined", bool(independent_variables_input)),
-            ("📊 Effect type selected", bool(selected_effect_type))
+            ("Papers uploaded", uploaded_files is not None),
+            ("Dependent variable defined", bool(dependent_variable)),
+            ("Independent variables defined", bool(independent_variables_input)),
+            ("Effect type selected", bool(selected_effect_type))
         ]
         
         for req_text, is_met in requirements:
-            status = "✅" if is_met else "⏳"
+            status = "✓" if is_met else "•"
             st.markdown(f"{status} {req_text}")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
     process_button = st.button(
-        "🚀 Start Meta-Analysis Data Coding" if ready_to_process else "⏳ Complete Requirements Above",
+        "Start Meta-Analysis Data Coding" if ready_to_process else "Complete Requirements Above",
         type="primary",
         disabled=not ready_to_process,
         use_container_width=True
@@ -1000,11 +1089,69 @@ else:
     
     # Process papers
     if uploaded_files and process_button and ready_to_process:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
+        # Initialize enhanced progress tracking
+        st.markdown("## 🔄 Analysis in Progress")
+
+        # Simple progress display that works with Streamlit
+        overall_progress = st.progress(0)
+        main_status = st.empty()
+
+        # Processing status will be shown after completion
+        status_placeholder = st.empty()
+
+        # Initialize session state for progress tracking
+        if 'progress_data' not in st.session_state:
+            st.session_state.progress_data = {
+                'total_papers': len(uploaded_files),
+                'current_paper': 0,
+                'current_stage': 'Initializing',
+                'papers_status': {},
+                'start_time': datetime.now(),
+                'stage_times': [],
+                'logs': []
+            }
+
+        # Simple progress function that only updates progress bar and logs
+        def update_progress(stage, paper_name=None, progress_pct=0, details=None):
+            # Update session state for post-processing display
+            st.session_state.progress_data['current_stage'] = stage
+            if paper_name:
+                st.session_state.progress_data['current_paper'] = paper_name
+
+                # Update paper status
+                if "Complete" in stage or "✅" in stage:
+                    st.session_state.progress_data['papers_status'][paper_name] = "✅ Complete"
+                elif "Error" in stage or "❌" in stage:
+                    st.session_state.progress_data['papers_status'][paper_name] = "❌ Error"
+                elif "No Data" in stage or "⚠️" in stage:
+                    st.session_state.progress_data['papers_status'][paper_name] = "⚠️ No Data"
+                else:
+                    st.session_state.progress_data['papers_status'][paper_name] = f"🔄 {stage}"
+
+            # Add log entry
+            timestamp = datetime.now().strftime('%H:%M:%S')
+            log_entry = f"[{timestamp}] {stage}"
+            if paper_name:
+                log_entry += f" - {paper_name}"
+            if details:
+                log_entry += f": {details}"
+            st.session_state.progress_data['logs'].append(log_entry)
+
+            # Keep only last 50 logs to prevent memory issues
+            if len(st.session_state.progress_data['logs']) > 50:
+                st.session_state.progress_data['logs'] = st.session_state.progress_data['logs'][-50:]
+
+            # Only update progress bar and main status (these work during processing)
+            try:
+                overall_progress.progress(progress_pct)
+                main_status.markdown(f"**{stage}**{f' - {paper_name}' if paper_name else ''}")
+            except:
+                # Ignore any UI update errors during processing
+                pass
+
+
         independent_variables = [var.strip() for var in independent_variables_input.split(',')]
-        
+
         from src.meta_agent.data_types import UserInstructions
         user_instructions = UserInstructions(
             paper_relevance_instructions=st.session_state.custom_instructions['paper_relevance'],
@@ -1012,30 +1159,99 @@ else:
             samples_extraction_instructions=st.session_state.custom_instructions['samples_extraction'],
             variables_extraction_instructions=st.session_state.custom_instructions['variables_extraction']
         )
-        
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            status_text.text(f"📁 Preparing {len(uploaded_files)} files...")
-            
+            # File preparation stage
+            update_progress("📁 File Preparation", progress_pct=0.1, details=f"Preparing {len(uploaded_files)} files for analysis")
+
             for i, uploaded_file in enumerate(uploaded_files):
                 file_path = os.path.join(temp_dir, uploaded_file.name)
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-                progress_bar.progress((i + 1) / (len(uploaded_files) * 2))
-            
-            status_text.text("🤖 Running AI analysis...")
+
+                # Update individual paper status
+                st.session_state.progress_data['papers_status'][uploaded_file.name] = "📁 File Ready"
+
+                # Update progress
+                prep_progress = 0.1 + (0.1 * (i + 1) / len(uploaded_files))
+                update_progress("📁 File Preparation", uploaded_file.name, prep_progress, "File copied and ready")
+
+                # Small delay to show progress (remove in production)
+                import time
+                time.sleep(0.5)
+
+            update_progress("🤖 Starting AI Analysis", progress_pct=0.2, details="Initializing AI processing pipeline")
             try:
+                # Define progress callback function
+                def progress_callback(stage, paper_name=None, progress_pct=0, details=None):
+                    # Update session state
+                    st.session_state.progress_data['current_stage'] = stage
+                    if paper_name:
+                        st.session_state.progress_data['current_paper'] = paper_name
+
+                        # Update paper status in papers_status dict
+                        if "Complete" in stage or "✅" in stage:
+                            st.session_state.progress_data['papers_status'][paper_name] = "✅ Complete"
+                        elif "Error" in stage or "❌" in stage:
+                            st.session_state.progress_data['papers_status'][paper_name] = "❌ Error"
+                        elif "No Data" in stage or "⚠️" in stage:
+                            st.session_state.progress_data['papers_status'][paper_name] = "⚠️ No Data"
+                        else:
+                            st.session_state.progress_data['papers_status'][paper_name] = f"🔄 {stage}"
+
+                    # Add log entry
+                    timestamp = datetime.now().strftime('%H:%M:%S')
+                    log_entry = f"[{timestamp}] {stage}"
+                    if paper_name:
+                        log_entry += f" - {paper_name}"
+                    if details:
+                        log_entry += f": {details}"
+                    st.session_state.progress_data['logs'].append(log_entry)
+
+                    # Update progress - NO st.rerun() during processing as it interrupts the flow
+                    update_progress(stage, paper_name, progress_pct, details)
+
                 result = process_papers(
-                    temp_dir, 
-                    "data/output", 
-                    dependent_variable, 
-                    independent_variables, 
+                    temp_dir,
+                    "data/output",
+                    dependent_variable,
+                    independent_variables,
                     user_instructions,
                     effect_types_to_extract=[selected_effect_type],  # Pass selected effect type as list
-                    target_groups_for_comparison=target_groups  # Pass target groups if specified
+                    target_groups_for_comparison=target_groups,  # Pass target groups if specified
+                    selected_model=st.session_state.get('selected_model', 'LLM_GPT41_FALLBACK'),  # Pass selected model
+                    parsing_mode=st.session_state.get('selected_parsing_mode', 'standard'),  # Pass selected parsing mode
+                    progress_callback=progress_callback  # Pass the progress callback
                 )
                 
-                progress_bar.progress(1.0)
-                status_text.text("✅ Analysis complete!")
+                overall_progress.progress(1.0)
+                main_status.markdown("**🎉 Analysis Complete!**")
+
+                # Final progress update
+                update_progress("🎉 Processing Complete", progress_pct=1.0, details="All papers processed successfully!")
+
+                # Display processing summary after completion
+                if 'progress_data' in st.session_state:
+                    with status_placeholder.container():
+                        st.markdown("### 📊 Processing Summary")
+
+                        elapsed = datetime.now() - st.session_state.progress_data['start_time']
+                        total_time = f"{elapsed.seconds // 60}m {elapsed.seconds % 60}s"
+
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("⏱️ Total Time", total_time)
+                        with col2:
+                            completed_papers = len([s for s in st.session_state.progress_data['papers_status'].values() if "✅" in s])
+                            st.metric("✅ Papers Completed", f"{completed_papers}/{len(uploaded_files)}")
+                        with col3:
+                            st.metric("📝 Log Entries", len(st.session_state.progress_data['logs']))
+
+                        # Show activity log
+                        if st.session_state.progress_data['logs']:
+                            with st.expander("📋 View Processing Log", expanded=False):
+                                for log in st.session_state.progress_data['logs']:
+                                    st.markdown(f"<small>{log}</small>", unsafe_allow_html=True)
                 
                 timestamp_dirs = [d for d in os.listdir("data/output") if os.path.isdir(os.path.join("data/output", d))]
                 if timestamp_dirs:
@@ -1060,11 +1276,17 @@ else:
                         samples_csv_path = os.path.join(result_dir, "samples.csv")
                         variables_csv_path = os.path.join(result_dir, "variables.csv")
                         correlations_csv_path = os.path.join(result_dir, "correlations.csv")
-                        
+
                         st.session_state.papers_df = pd.read_csv(papers_csv_path)
                         st.session_state.samples_df = pd.read_csv(samples_csv_path)
                         st.session_state.variables_df = pd.read_csv(variables_csv_path)
-                        st.session_state.correlations_df = pd.read_csv(correlations_csv_path)
+
+                        # Conditionally load correlations file if it exists
+                        if os.path.exists(correlations_csv_path):
+                            st.session_state.correlations_df = pd.read_csv(correlations_csv_path)
+                        else:
+                            # Create empty dataframe for correlations if file doesn't exist
+                            st.session_state.correlations_df = pd.DataFrame()
                         
                         # Immediate verification after loading
                         logger.info(f"Immediate verification after loading:")
@@ -1126,28 +1348,36 @@ else:
                         # Show better success message with debug info
                         total_papers = len(st.session_state.papers_df)
                         if total_papers > 0:
-                            st.success(f"🎉 Processing complete! Loaded {total_papers} papers with data.")
+                            st.success(f"Processing complete! Loaded {total_papers} papers with data.")
                         else:
-                            st.warning("⚠️ Processing complete, but no paper data was extracted. Check the tabs for details.")
+                            st.warning("Processing complete, but no paper data was extracted. Check the tabs for details.")
                         
                         # Set flag to indicate data is loaded successfully
                         st.session_state.data_loaded_successfully = True
-                        
+
+                        # Clean up progress data to return to results view
+                        if 'progress_data' in st.session_state:
+                            del st.session_state.progress_data
+
                         # Force a complete refresh
                         logger.info("Forcing app rerun after successful data loading")
                         st.rerun()
                 else:
-                    st.warning("⚠️ Processing completed but no results found.")
+                    st.warning("Processing completed but no results found.")
             
             except Exception as e:
-                st.error(f"❌ Processing failed: {str(e)}")
+                st.error(f"Processing failed: {str(e)}")
                 logger.exception("Error during processing")
+
+                # Clean up progress data on error
+                if 'progress_data' in st.session_state:
+                    del st.session_state.progress_data
 
 # Footer
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #6b7280; font-size: 0.9rem;'>"
-    "© 2025 Meta-Analysis Agent | Designed for Academic Research Excellence"
+    "Meta-Analysis Agent | Academic Research Tool"
     "</div>", 
     unsafe_allow_html=True
 ) 

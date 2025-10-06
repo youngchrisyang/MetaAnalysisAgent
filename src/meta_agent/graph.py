@@ -2,7 +2,6 @@ import json, os, operator, logging
 from typing import Annotated, List, Optional, Literal, Dict
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
-from langchain.llms import OpenAI
 from langchain_core.documents import Document
 from langgraph.graph import END, StateGraph
 from langgraph.constants import Send
@@ -26,6 +25,12 @@ from .chains import (
     get_generate_html_report_chain
 )
 from .sample_graph import SampleGraph
+from src.utils.models import (
+    LLM_GPT5_FALLBACK,
+    LLM_GPT41_FALLBACK,
+    LLM_CLAUDE4_FALLBACK,
+    LLM_CLAUDE45_FALLBACK
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -46,8 +51,19 @@ class GraphState(TypedDict):
     worklog: Annotated[str, operator.add]  # Log of work done by this LangGraph
 
 class MetaAnalysisGraph:
-    def __init__(self):
-        self.llm = OpenAI(temperature=0)
+    def __init__(self, selected_model: str = "LLM_GPT41_FALLBACK", parsing_mode: str = "standard"):
+        self.selected_model = selected_model
+        self.parsing_mode = parsing_mode
+
+    def get_model_instance(self):
+        """Get the actual model instance based on selected_model string"""
+        model_mapping = {
+            "LLM_GPT5_FALLBACK": LLM_GPT5_FALLBACK,
+            "LLM_GPT41_FALLBACK": LLM_GPT41_FALLBACK,
+            "LLM_CLAUDE4_FALLBACK": LLM_CLAUDE4_FALLBACK,
+            "LLM_CLAUDE45_FALLBACK": LLM_CLAUDE45_FALLBACK
+        }
+        return model_mapping.get(self.selected_model, LLM_GPT41_FALLBACK)
 
     def format_data_for_report(self, state: GraphState) -> Dict[str, str]:
         """Format extracted data for LLM report generation"""
@@ -63,6 +79,7 @@ class MetaAnalysisGraph:
         if paper_meta_info:
             paper_info_text = f"""
 Title: {paper_meta_info.title or 'Not specified'}
+Authors: {'; '.join(paper_meta_info.authors) if paper_meta_info.authors else 'Not specified'}
 Journal: {paper_meta_info.journal or 'Not specified'}
 Publication Year: {paper_meta_info.publication_year or 'Not specified'}
 Publication Type: {paper_meta_info.publication_type or 'Not specified'}
@@ -127,7 +144,7 @@ Variables in Sample {i+1} ({sample.sample_name}):
         if samples_complete_info:
             correlations_info_parts = []
             for i, sample in enumerate(samples_complete_info):
-                existing_correlations = [corr for corr in sample.correlations_info if corr.exists]
+                existing_correlations = sample.correlations_info or []
                 if existing_correlations:
                     corr_list = []
                     for corr in existing_correlations:
@@ -167,7 +184,7 @@ Correlations in Sample {i+1} ({sample.sample_name}):
         logger.info("Worklog: %s", state["worklog"])
         
         try:
-            documents = get_llamaparsed_doc(state["paper_path"])
+            documents = get_llamaparsed_doc(state["paper_path"], parsing_mode=self.parsing_mode)
             
             # Check if documents were successfully parsed
             if not documents:
@@ -230,11 +247,11 @@ Correlations in Sample {i+1} ({sample.sample_name}):
         instructions = user_instructions.paper_relevance_instructions or UserInstructions().paper_relevance_instructions
 
         try:
-            chain = get_is_paper_relevant_chain()
+            chain = get_is_paper_relevant_chain(llm=self.get_model_instance())
             paper_relevance = chain.invoke(
                 {
-                    "dependent_variable": dependent_variable, 
-                    "independent_variables": independent_variables, 
+                    "dependent_variable": dependent_variable,
+                    "independent_variables": independent_variables,
                     "paper_content": paper_content,
                     "instructions": instructions
                 }
@@ -270,7 +287,7 @@ Correlations in Sample {i+1} ({sample.sample_name}):
         user_instructions = state.get("user_instructions", UserInstructions())
         instructions = user_instructions.paper_meta_info_instructions or UserInstructions().paper_meta_info_instructions
         
-        chain = get_extract_paper_meta_info_chain()
+        chain = get_extract_paper_meta_info_chain(llm=self.get_model_instance())
         output = chain({
             "paper_content": state["paper_content"][:10],
             "instructions": instructions
@@ -294,7 +311,7 @@ Correlations in Sample {i+1} ({sample.sample_name}):
         instructions = user_instructions.samples_extraction_instructions or UserInstructions().samples_extraction_instructions
         
         # Extract sample information from the paper content
-        chain = get_extract_samples_basic_info_chain()
+        chain = get_extract_samples_basic_info_chain(llm=self.get_model_instance())
         output = chain({
             "paper_content": state["paper_content"],
             "instructions": instructions
@@ -343,7 +360,7 @@ Correlations in Sample {i+1} ({sample.sample_name}):
         logger.info("Worklog: %s", state["worklog"])
 
         # Create and invoke the sample graph
-        sample_graph = SampleGraph()
+        sample_graph = SampleGraph(selected_model=self.selected_model)
         graph = sample_graph.create_sample_graph()
         
         # Prepare input for the sample graph - FIXED: properly pass effect_types_to_extract and target_groups_for_comparison
@@ -373,7 +390,7 @@ Correlations in Sample {i+1} ({sample.sample_name}):
         combined_worklog = state["worklog"] + f"Sample graph completed for {sample_name}\n" + sample_worklog
 
         logger.info(f"Sample graph completed for {sample_name}")
-        logger.info(f"Sample_complete_info summary: \n- Variables: {[var.variable_name for var in sample_complete_info.variables_info]}\n- Correlations found: {[(c.variable1, c.variable2, c.correlation_coefficient) for c in sample_complete_info.correlations_info if c.exists]}")
+        logger.info(f"Sample_complete_info summary: \n- Variables: {[var.variable_name for var in sample_complete_info.variables_info]}\n- Correlations found: {[(c.variable1, c.variable2, c.correlation_coefficient) for c in sample_complete_info.correlations_info]}")
 
         return {
             "samples_complete_info": [sample_complete_info], 
@@ -391,15 +408,219 @@ Correlations in Sample {i+1} ({sample.sample_name}):
         
         # Generate HTML report using LLM
         logger.info("Calling LLM to generate HTML report...")
-        html_report_chain = get_generate_html_report_chain()
-        html_report = html_report_chain.invoke(formatted_data)
-        
-        logger.info(f"LLM-generated HTML report completed (length: {len(html_report)} characters)")
+        try:
+            # Note: get_generate_html_report_chain always uses Claude 4.5 internally
+            html_report_chain = get_generate_html_report_chain()
+            html_report = html_report_chain.invoke(formatted_data)
+
+            logger.info(f"LLM-generated HTML report completed (length: {len(html_report)} characters)")
+
+            # Validate HTML completeness - check if it contains essential elements
+            if not html_report or len(html_report) < 1000:
+                logger.warning(f"HTML report seems incomplete (length: {len(html_report)}), generating fallback")
+                html_report = self.generate_fallback_html_report(formatted_data)
+            elif not ("</html>" in html_report or "</body>" in html_report):
+                logger.warning("HTML report missing closing tags, attempting to fix")
+                # Try to close the HTML properly
+                if not html_report.endswith("</html>"):
+                    if not html_report.endswith("</body>"):
+                        html_report += "\n</div>\n</body>\n</html>"
+                    else:
+                        html_report += "\n</html>"
+
+        except Exception as e:
+            logger.error(f"Error generating HTML report with LLM: {str(e)}")
+            logger.info("Generating fallback HTML report...")
+            html_report = self.generate_fallback_html_report(formatted_data)
 
         return {
             "html_report": html_report,
             "worklog": state["worklog"]
         }
+
+    def generate_fallback_html_report(self, formatted_data: Dict[str, str]) -> str:
+        """Generate a fallback HTML report when LLM generation fails"""
+        logger.info("Generating fallback HTML report using template")
+
+        # Extract key information
+        dependent_variable = formatted_data.get("dependent_variable", "Unknown")
+        independent_variables = formatted_data.get("independent_variables", "Unknown")
+        paper_relevance = formatted_data.get("paper_relevance", "Unknown")
+        paper_meta_info = formatted_data.get("paper_meta_info", "No information available")
+        samples_info = formatted_data.get("samples_info", "No samples information available")
+        variables_info = formatted_data.get("variables_info", "No variables information available")
+        correlations_info = formatted_data.get("correlations_info", "No correlations information available")
+
+        # Generate comprehensive fallback HTML
+        html_report = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta-Analysis Extraction Report</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f7fa;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 40px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }}
+        header {{
+            border-bottom: 4px solid #2c3e50;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }}
+        h1 {{
+            color: #2c3e50;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }}
+        h2 {{
+            color: #34495e;
+            font-size: 22px;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #3498db;
+        }}
+        h3 {{
+            color: #34495e;
+            font-size: 18px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }}
+        .meta-info {{
+            background-color: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 25px;
+        }}
+        .meta-info p {{
+            margin: 5px 0;
+        }}
+        .badge {{
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 8px;
+        }}
+        .badge-relevant {{
+            background-color: #27ae60;
+            color: white;
+        }}
+        .badge-not-relevant {{
+            background-color: #e74c3c;
+            color: white;
+        }}
+        .section {{
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }}
+        .warning {{
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #856404;
+        }}
+        pre {{
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔬 Meta-Analysis Extraction Report</h1>
+            <div class="meta-info">
+                <p><strong>Dependent Variable:</strong> {dependent_variable}</p>
+                <p><strong>Independent Variables:</strong> {independent_variables}</p>
+                <p><strong>Paper Relevance:</strong> {"✅ Relevant" if str(paper_relevance).lower() == "true" else "❌ Not Relevant"}
+                   <span class="badge {'badge-relevant' if str(paper_relevance).lower() == "true" else 'badge-not-relevant'}">
+                       {"RELEVANT" if str(paper_relevance).lower() == "true" else "NOT RELEVANT"}
+                   </span>
+                </p>
+            </div>
+        </header>
+
+        <div class="warning">
+            <strong>⚠️ Note:</strong> This report was generated using a fallback template due to an issue with the advanced AI report generator.
+            The data below represents the raw extracted information and may require manual interpretation.
+        </div>
+
+        <div class="section">
+            <h2>📄 Paper Information</h2>
+            <pre>{paper_meta_info}</pre>
+        </div>
+
+        <div class="section">
+            <h2>👥 Samples Information</h2>
+            <pre>{samples_info}</pre>
+        </div>
+
+        <div class="section">
+            <h2>📊 Variables Information</h2>
+            <pre>{variables_info}</pre>
+        </div>
+
+        <div class="section">
+            <h2>🔗 Correlations Information</h2>
+            <pre>{correlations_info}</pre>
+        </div>
+
+        <div class="section">
+            <h2>💡 Recommendations</h2>
+            <h3>Next Steps for Researchers:</h3>
+            <ul>
+                <li><strong>Data Verification:</strong> Review the extracted information for accuracy and completeness</li>
+                <li><strong>Quality Assessment:</strong> Check confidence levels and reasons for any concerns</li>
+                <li><strong>Manual Review:</strong> Verify correlations and sample characteristics against the original paper</li>
+                <li><strong>Meta-Analysis Integration:</strong> Use this extracted data as input for your meta-analysis calculations</li>
+            </ul>
+
+            <h3>Quality Control Notes:</h3>
+            <ul>
+                <li>This extraction was performed automatically using AI agents</li>
+                <li>All extractions should be validated by qualified researchers</li>
+                <li>Pay special attention to confidence levels and extraction reasons</li>
+                <li>Consider re-extracting if data appears incomplete or inconsistent</li>
+            </ul>
+        </div>
+
+        <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #666;">
+            <p>Generated by Meta-Analysis Agent | Academic Research Tool</p>
+            <p><small>Report created on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</small></p>
+        </footer>
+    </div>
+</body>
+</html>'''
+
+        return html_report
 
     def create_meta_analysis_graph(self):
         workflow = StateGraph(GraphState)

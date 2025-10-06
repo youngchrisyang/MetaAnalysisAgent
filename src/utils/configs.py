@@ -5,7 +5,7 @@ DEFAULT_PAPER_RELEVANCE_INSTRUCTIONS = """
 2. Include papers where the variables are measured as constructs, scales, or behavioral indicators - they don't need exact name matches.
 3. Consider papers relevant if they study conceptually related constructs (e.g., "workplace aggression" for "hostility", "personality traits" for specific traits).
 4. Include papers where both variables appear as independent variables, as predictors, or in correlation matrices.
-5. Exclude purely theoretical papers, reviews without original data, or studies lacking quantitative measures of the variables.
+5. Exclude purely theoretical papers, reviews without original data, meta-analyses, or studies lacking quantitative measures of the variables.
 6. When in doubt, err on the side of inclusion - it's better to extract from a marginally relevant paper than miss a valuable one.
 7. Look for the variables in the abstract, methods, results sections, and any tables or figures.
 """
@@ -32,7 +32,7 @@ DEFAULT_SAMPLES_EXTRACTION_INSTRUCTIONS = """
    - Assign a concise name and description to each sample that captures the population and context (e.g., "online adult participants in Study 1" or "combined Study 1 + Study 2 sample").
 
 2. **Extract standard sample characteristics**
-   - Sample type (e.g., students, community volunteers, clinical participants).
+   - Sample type (e.g., students, community volunteers, clinical participants, employees, incarcerated/offender group).
    - Sampling technique (e.g., convenience, random sampling, online recruitment).
    - Sample size, with counts by demographic groups where available.
    - Location (country or region).
@@ -45,6 +45,7 @@ DEFAULT_SAMPLES_EXTRACTION_INSTRUCTIONS = """
 
 4. **Missing information**
    - If specific sample information cannot be determined, leave the field blank.  Do not infer or fabricate data.
+   - Do not calculate one information from another, such as subtracting male_n from total_n to get female_n, etc.
 """
 
 DEFAULT_VARIABLES_EXTRACTION_INSTRUCTIONS = """
@@ -82,8 +83,12 @@ CONFIDENCE_LEVEL_INSTRUCTIONS = """
 **Confidence Assessment:**
 For each piece of information you extract, assess your confidence level based on the clarity and availability of the source information:
 
-- **"confident"**: The information is clearly stated in the paper, unambiguous, and directly extractable from explicit text or tables.
-- **"with reservations"**: The information is present but requires some interpretation, calculation, or inference from the available data. There may be minor ambiguities but the extraction is reasonably well-supported.
+- **"confident"**: 
+The information is clearly stated in the paper, unambiguous, and directly extractable from explicit text or tables.
+- **"with reservations"**: 
+The information is present but requires some interpretation, calculation, or inference from the available data. 
+There may be minor ambiguities but the extraction is reasonably well-supported. 
+If the original paper included inconsistent information, such as the correlation reported in tables and in text are different, put “with reservation” and notify this in notes.
 - **"not confident"**: The information is unclear, ambiguous, requires significant inference, or is not explicitly stated. The extraction may be based on limited evidence or assumptions.
 
 Provide a single confidence level that reflects your overall confidence in the accuracy and completeness of your extraction for this item.

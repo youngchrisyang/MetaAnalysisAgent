@@ -20,7 +20,8 @@ from .data_types import (
 
 from .chains import (
     get_identify_related_variables_chain,
-    get_extract_correlations_for_pairs_chain,
+    get_identify_correlation_chunks_chain,
+    get_extract_correlations_from_chunk_chain,
     get_extract_between_group_effects_chain,
     get_extract_within_subject_effects_chain,
     get_extract_binary_event_effects_chain
@@ -46,8 +47,25 @@ class SampleGraphState(TypedDict):
     worklog: Annotated[str, operator.add] = ""  # Log of work done
 
 class SampleGraph:
-    def __init__(self):
-        pass
+    def __init__(self, selected_model: str = "LLM_GPT41_FALLBACK"):
+        self.selected_model = selected_model
+
+    def get_model_instance(self):
+        """Get the actual model instance based on selected_model string"""
+        from src.utils.models import (
+            LLM_GPT5_FALLBACK,
+            LLM_GPT41_FALLBACK,
+            LLM_CLAUDE4_FALLBACK,
+            LLM_CLAUDE45_FALLBACK
+        )
+
+        model_mapping = {
+            "LLM_GPT5_FALLBACK": LLM_GPT5_FALLBACK,
+            "LLM_GPT41_FALLBACK": LLM_GPT41_FALLBACK,
+            "LLM_CLAUDE4_FALLBACK": LLM_CLAUDE4_FALLBACK,
+            "LLM_CLAUDE45_FALLBACK": LLM_CLAUDE45_FALLBACK
+        }
+        return model_mapping.get(self.selected_model, LLM_GPT41_FALLBACK)
 
     def initialize_sample_processing(self, state: SampleGraphState) -> SampleGraphState:
         """Initialize the sample processing with basic setup and logging"""
@@ -93,7 +111,7 @@ class SampleGraph:
         # ========== STEP 1: Identify all related variables ==========
         logger.info(f"Step 1: Identifying all related variables for sample {sample_name}")
         
-        identify_variables_chain = get_identify_related_variables_chain()
+        identify_variables_chain = get_identify_related_variables_chain(llm=self.get_model_instance())
         variables_output = identify_variables_chain({
             "paper_content": state["paper_content"],
             "sample_description": sample_description,
@@ -113,12 +131,14 @@ class SampleGraph:
 
     def extract_sample_correlations(self, state: SampleGraphState) -> SampleGraphState:
         """
-        Extract correlations between all pairs of previously extracted variables.
-        This is the second step of the variable extraction process.
+        Extract correlations using a 3-step approach:
+        1. Identify text chunks containing correlation information
+        2. Extract correlations from each chunk
+        3. Aggregate results
         """
 
         # Early exit if correlation extraction is not selected
-        effect_types = state["effect_types_to_extract"]  # FIXED: Direct access, no fallback to all types
+        effect_types = state["effect_types_to_extract"]
         if "corr_r" not in effect_types:
             logger.info("Skipping correlation extraction - not selected in effect_types_to_extract")
             return {
@@ -128,14 +148,14 @@ class SampleGraph:
 
         sample_basic_info = state["sample_basic_info"]
         sample_name = sample_basic_info.sample_name
-        
-        worklog_entry = f"Extracting correlations for sample {sample_name}"
+
+        worklog_entry = f"Extracting correlations for sample {sample_name} using 3-step approach"
         state["worklog"] = state.get("worklog", "") + worklog_entry + "\n"
         logger.info("Sample Graph Worklog: %s", state["worklog"])
 
         # Get the extracted variables from the previous step
         all_variables = state.get("extracted_variables", [])
-        
+
         if not all_variables:
             logger.warning(f"No variables found for correlation extraction in sample {sample_name}")
             return {
@@ -149,39 +169,78 @@ class SampleGraph:
             Sample Size: {sample_basic_info.sample_size}
         """
 
-        # ========== STEP 2: Extract correlations for all variable pairs ==========
-        logger.info(f"Step 2: Extracting correlations for all variable pairs in sample {sample_name}")
-        
-        # Generate all possible pairs of variables
-        variable_names = [var.variable_name for var in all_variables]
-        all_pairs = list(combinations(variable_names, 2))
-        
-        logger.info(f"Generated {len(all_pairs)} variable pairs to check for correlations")
-        
-        if not all_pairs:
-            logger.info(f"No variable pairs to check for correlations in sample {sample_name}")
+        # Format variables list for prompts
+        variables_list = "\n".join([f"- {var.variable_name}" for var in all_variables])
+
+        logger.info(f"Starting correlation extraction for {len(all_variables)} variables: {[var.variable_name for var in all_variables]}")
+
+        # ========== STEP 1: Identify text chunks with correlation information ==========
+        logger.info(f"Step 1: Identifying text chunks containing correlation information")
+
+        identify_chunks_chain = get_identify_correlation_chunks_chain(llm=self.get_model_instance())
+        chunks_output = identify_chunks_chain({
+            "paper_content": state["paper_content"],
+            "sample_description": sample_description,
+            "variables_list": variables_list
+        })
+
+        correlation_chunks = chunks_output.correlation_chunks
+        logger.info(f"Step 1 complete: Found {len(correlation_chunks)} text chunks containing correlation information")
+
+        if not correlation_chunks:
+            logger.info(f"No correlation chunks found for sample {sample_name}")
             return {
                 "extracted_correlations": [],
                 "worklog": state["worklog"]
             }
-        
-        # Format pairs for the prompt
-        pairs_text = "\n".join([f"- {pair[0]} vs {pair[1]}" for pair in all_pairs])
-        
-        # Extract correlations for all pairs
-        correlations_chain = get_extract_correlations_for_pairs_chain()
-        correlations_output = correlations_chain({
-            "paper_content": state["paper_content"],
-            "sample_description": sample_description,
-            "variable_pairs": pairs_text
-        })
-        
-        all_correlations = correlations_output.correlations
-        logger.info(f"Correlation extraction complete: Found {len([c for c in all_correlations if c.exists])} correlations out of {len(all_correlations)} pairs checked")
+
+        # ========== STEP 2: Extract correlations from each chunk ==========
+        logger.info(f"Step 2: Extracting correlations from {len(correlation_chunks)} chunks")
+
+        all_correlations = []
+        correlations_chain = get_extract_correlations_from_chunk_chain(llm=self.get_model_instance())
+
+        for chunk_idx, chunk in enumerate(correlation_chunks):
+            logger.info(f"Processing chunk {chunk_idx + 1}/{len(correlation_chunks)}")
+
+            chunk_correlations_output = correlations_chain({
+                "sample_description": sample_description,
+                "variables_list": variables_list,
+                "text_chunk": chunk
+            })
+
+            # Handle case where output might be None or missing correlations
+            chunk_correlations = []
+            if chunk_correlations_output and hasattr(chunk_correlations_output, 'correlations'):
+                chunk_correlations = chunk_correlations_output.correlations or []
+
+            chunk_found = len(chunk_correlations)
+            logger.info(f"Chunk {chunk_idx + 1} complete: Found {chunk_found} correlations")
+
+            # Add correlations from this chunk
+            all_correlations.extend(chunk_correlations)
+
+        # ========== STEP 3: Aggregate and deduplicate results ==========
+        logger.info(f"Step 3: Aggregating correlation results")
+
+        # Remove duplicates based on variable pairs (all correlations should exist now)
+        seen_pairs = set()
+        deduplicated_correlations = []
+
+        for correlation in all_correlations:
+            # Create a standardized pair key (sorted to handle both directions)
+            pair_key = tuple(sorted([correlation.variable1, correlation.variable2]))
+            if pair_key not in seen_pairs:
+                seen_pairs.add(pair_key)
+                deduplicated_correlations.append(correlation)
+            else:
+                logger.info(f"Removed duplicate correlation: {correlation.variable1} vs {correlation.variable2}")
+
+        logger.info(f"Correlation extraction complete: Found {len(deduplicated_correlations)} unique correlations from {len(correlation_chunks)} chunks")
 
         # Store the extracted correlations in state for the synthesize node
         return {
-            "extracted_correlations": all_correlations,
+            "extracted_correlations": deduplicated_correlations,
             "worklog": state["worklog"]
         }
 
@@ -235,7 +294,7 @@ class SampleGraph:
         logger.info(f"Analyzing group separations and extracting between-group effects for sample {sample_name}")
         
         # Use LLM chain to determine if group separations exist and extract effects
-        between_group_chain = get_extract_between_group_effects_chain()
+        between_group_chain = get_extract_between_group_effects_chain(llm=self.get_model_instance())
         between_group_output = between_group_chain({
             "paper_content": state["paper_content"],
             "sample_description": sample_description,
@@ -304,8 +363,8 @@ class SampleGraph:
 
         logger.info(f"Extracting within-subject effects for sample {sample_name}")
         
-        # Extract within-subject effects 
-        within_subject_chain = get_extract_within_subject_effects_chain()
+        # Extract within-subject effects
+        within_subject_chain = get_extract_within_subject_effects_chain(llm=self.get_model_instance())
         within_subject_output = within_subject_chain({
             "paper_content": state["paper_content"],
             "sample_description": sample_description,
@@ -364,8 +423,8 @@ class SampleGraph:
 
         logger.info(f"Extracting binary event effects for sample {sample_name}")
         
-        # Extract binary event effects 
-        binary_event_chain = get_extract_binary_event_effects_chain()
+        # Extract binary event effects
+        binary_event_chain = get_extract_binary_event_effects_chain(llm=self.get_model_instance())
         binary_event_output = binary_event_chain({
             "paper_content": state["paper_content"],
             "sample_description": sample_description,

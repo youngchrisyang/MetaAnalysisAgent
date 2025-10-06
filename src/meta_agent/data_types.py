@@ -15,9 +15,11 @@ class PaperMetaInfo(BaseModel):
     publication_year: Optional[int] = Field(description="The year the paper was published")
     journal: Optional[str] = Field(description="The name of the journal")
     published_status: Optional[Literal["published", "unpublished"]] = Field(description="The publication status of the paper")
-    publication_type: Optional[Literal["journal article", "dissertation paper", "conference paper"]] = Field(description="The type of publication of the paper")
+    publication_type: Optional[Literal["journal article", "dissertation paper", "conference paper", "book chapter", "preprint"]] = Field(description="The type of publication of the paper")
+    authors: Optional[List[str]] = Field(description="The authors of the paper")
     num_studies: Optional[int] = Field(description="The number of studies in the paper")
-    num_samples: Optional[int] = Field(description="The number of samples in the paper")
+    study_design_types: Optional[List[Literal["cross-sectional", "longitudinal", "cross-sectional-longitudinal", "lab experiment", "field experiment", "natural experiment", "not specified"]]] = Field(description="The study design type of the paper")
+    num_samples: Optional[int] = Field(description="The number of different samples used in the paper. Note this is different from sample size. ")
     confidence_level: Literal["confident", "with reservations", "not confident"] = Field(description="Overall confidence in the accuracy of the extracted paper meta-information")
     reasons: List[str] = Field(description="List of specific reasons explaining the confidence level and what researchers should pay attention to regarding the extracted information")
 
@@ -30,8 +32,8 @@ class SampleBasicInfo(BaseModel):
     sample_size: int = Field(description="The number of participants in the sample. Sample data size N")
     mean_age: Optional[float] = Field(description="The average age of participants")
     sd_age: Optional[float] = Field(description="The standard deviation of the ages")
-    male_n: Optional[int] = Field(description="The number of male participants")
-    female_n: Optional[int] = Field(description="The number of female participants")
+    male_n: Optional[int] = Field(description="The number of male participants explicitly reported. Do not use total sample size to calculate the number of male participants.")
+    female_n: Optional[int] = Field(description="The number of female participants explicitly reported. Do not use total sample size to calculate the number of female participants.")
     major_ethnicity: Optional[str] = Field(description="The major ethnicity of the sample")
     major_ethnicity_percentage: Optional[float] = Field(description="The percentage of the major ethnicity")
     response_rate: Optional[float] = Field(description="The percentage of participants who responded to the study")
@@ -43,9 +45,11 @@ class VariableInfoInSample(BaseModel):
     variable_name: str = Field(description="The exact name of the variable as used in the paper")
     variable_type: Literal["Continuous", "Categorical"] = Field(description="The type of the variable")
     scale_measure: str = Field(description="The scale or measure used for the variable")
+    scale_range: Optional[str] = Field(description="The range of the scale used")
     reliability: Optional[float] = Field(description="The reliability (e.g., Cronbach's alpha) of the scale used")
     mean: Optional[float] = Field(description="The mean value of the variable")
     standard_deviation: Optional[float] = Field(description="The standard deviation of the variable")
+    time_point: Optional[str] = Field(description="The time point of the variable")
     conceptual_category: Optional[str] = Field(description="Conceptual category (e.g., cognitive, behavioral, biological)")
     original_sentences: Optional[str] = Field(description="For reference purpose, the original sentences from the paper that describe the variable. If in a table, use the table name.")
     confidence_level: Literal["confident", "with reservations", "not confident"] = Field(description="Confidence in the accuracy of the extracted variable information")
@@ -65,13 +69,16 @@ class VariablePair(BaseModel):
 class CorrelationInfoInSample(BaseModel):
     variable1: str = Field(description="Name of the first variable in the pair")
     variable2: str = Field(description="Name of the second variable in the pair")
-    exists: bool = Field(description="Whether the correlation exists for this pair of variables")
-    correlation_type: Literal["Pearson", "Spearman", "Kendall", "Not specified"] = Field(description="The type of the correlation")
-    correlation_coefficient: Optional[float] = Field(description="The correlation coefficient between the pair of variables")
-    significance_level: Optional[float] = Field(description="P-value or significance level if reported")
-    original_sentences: Optional[str] = Field(description="For reference purpose, the original sentences from the paper that describe the correlation. If in a table, use the table name.")
-    confidence_level: Literal["confident", "with reservations", "not confident"] = Field(description="Confidence in the accuracy of the extracted correlation information")
-    reasons: List[str] = Field(description="List of specific reasons explaining the confidence level and what researchers should pay attention to regarding the correlation information")
+    correlation_type: Optional[Literal["Pearson", "Spearman", "Kendall", "Not specified"]] = Field(description="The type of the correlation")
+    correlation_coefficient: Optional[float] = Field(None, description="The correlation coefficient between the pair of variables")
+    correlation_p_value: Optional[float] = Field(None, description="P-value or significance level if reported")
+    correlation_confidence_interval_lower: Optional[float] = Field(None, description="Lower bound of 95% confidence interval if reported")
+    correlation_confidence_interval_upper: Optional[float] = Field(None, description="Upper bound of 95% confidence interval if reported")
+    adjusted_or_zero_order: Optional[Literal["zero-order","adjusted/partial","not specified"]] = Field(description="Zero or adjusted correlation")
+    significance_level: Optional[str] = Field(None, description="The significance level of the correlation")
+    original_sentences: Optional[str] = Field(None, description="For reference purpose, the original sentences from the paper that describe the correlation. If in a table, use the table name.")
+    confidence_level: Literal["confident", "with reservations", "not confident"] = Field(None, description="Confidence in the accuracy of the extracted correlation information")
+    reasons: List[str] = Field(None, description="List of specific reasons explaining the confidence level and what researchers should pay attention to regarding the correlation information")
 
 # New model for individual group information in between-group comparisons
 class GroupInfo(BaseModel):
@@ -145,8 +152,8 @@ class BinaryEventEffectInSample(BaseModel):
 
 # New model for Step 2: Extracting correlations for variable pairs
 class ExtractCorrelationsForPairs(BaseModel):
-    correlations: List[CorrelationInfoInSample] = Field(
-        description="Correlation information for each pair of variables, including whether the correlation exists and its value if reported"
+    correlations: Optional[List[CorrelationInfoInSample]] = Field(
+        description="Correlation information for each pair of variables. Extract all correlations that exist in the text chunk. If no correlation is found, do not create an entry for it."
     )
 
 # New models for the other extraction types
@@ -171,11 +178,11 @@ class ExtractBinaryEventEffects(BaseModel):
 class SampleCompleteInfo(BaseModel):
     sample_name: str = Field(description="The name of the sample")
     sample_basic_info: SampleBasicInfo = Field(description="The basic information of the sample")
-    variables_info: List[VariableInfoInSample] = Field(description="The information of all related variables found in this sample")
-    correlations_info: List[CorrelationInfoInSample] = Field(description="The correlations between any pairs of variables and any type")
-    between_group_effects_info: List[BetweenGroupEffectInSample] = Field(description="The between-group effects for relevant comparisons", default=[])
-    within_subject_effects_info: List[WithinSubjectEffectInSample] = Field(description="The within-subject effects for relevant comparisons", default=[])
-    binary_event_effects_info: List[BinaryEventEffectInSample] = Field(description="The binary event effects for relevant comparisons", default=[])
+    variables_info: Optional[List[VariableInfoInSample]] = Field(description="The information of all related variables found in this sample")
+    correlations_info: Optional[List[CorrelationInfoInSample]] = Field(description="The correlations between any pairs of variables and any type")
+    between_group_effects_info: Optional[List[BetweenGroupEffectInSample]] = Field(description="The between-group effects for relevant comparisons", default=[])
+    within_subject_effects_info: Optional[List[WithinSubjectEffectInSample]] = Field(description="The within-subject effects for relevant comparisons", default=[])
+    binary_event_effects_info: Optional[List[BinaryEventEffectInSample]] = Field(description="The binary event effects for relevant comparisons", default=[])
 
 class FinalMetaAnalysisInfo(BaseModel):
     paper_meta_info: PaperMetaInfo = Field(description="The meta information of the paper")
